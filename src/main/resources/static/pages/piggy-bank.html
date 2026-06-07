@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Piggy Bank · FLUX360</title>
+  <link rel="icon" href="../images/FLUX360_logo.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+        --green:        #16a34a;
+        --green-light:  #22c55e;
+        --green-dim:    #dcfce7;
+        --green-border: #bbf7d0;
+        --slate-900:    #0f172a;
+        --slate-700:    #334155;
+        --slate-600:    #475569;
+        --slate-400:    #94a3b8;
+        --slate-200:    #e2e8f0;
+        --slate-100:    #f1f5f9;
+        --slate-50:     #f8fafc;
+        --white:        #ffffff;
+        --red:          #dc2626;
+        --red-dim:      #fef2f2;
+        --red-border:   #fee2e2;
+    }
+
+    body { background: #f5f7f5; font-family: 'DM Sans', sans-serif; color: var(--slate-900); min-height: 100vh; padding: 36px 28px; }
+    .page { max-width: 1180px; margin: 0 auto; }
+
+    /* PAGE HEADER */
+    .page-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-bottom: 32px; animation: fadeUp 0.4s ease both; }
+    .page-title { display: flex; align-items: center; gap: 14px; }
+    .page-title-icon { width: 44px; height: 44px; background: var(--green); border-radius: 12px; display: flex; align-items: center; justify-content: center; color: white; font-size: 1.1rem; }
+    .page-title h1 { font-size: 1.5rem; font-weight: 600; color: var(--slate-900); letter-spacing: -0.02em; }
+    .page-title p  { font-size: 0.85rem; color: var(--slate-400); margin-top: 1px; }
+    .header-right  { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+    .balance-pill { background: var(--green); color: white; padding: 10px 20px; border-radius: 40px; display: flex; align-items: center; gap: 10px; font-size: 0.875rem; }
+    .balance-pill span { opacity: 0.8; }
+    .balance-pill strong { font-size: 1.1rem; font-weight: 600; }
+
+    .back-btn { display: inline-flex; align-items: center; gap: 7px; padding: 9px 16px; border-radius: 10px; border: 1.5px solid var(--slate-200); background: var(--white); font-family: 'DM Sans', sans-serif; font-size: 0.85rem; font-weight: 500; color: var(--slate-600); cursor: pointer; transition: all 0.15s; }
+    .back-btn:hover { border-color: var(--green-border); background: var(--green-dim); color: var(--green); }
+
+    /* STAT ROW */
+    .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; animation: fadeUp 0.4s 0.05s ease both; }
+    .stat-card { background: var(--white); border: 1.5px solid var(--slate-200); border-radius: 16px; padding: 20px 22px; display: flex; align-items: center; gap: 16px; }
+    .stat-icon { width: 42px; height: 42px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0; }
+    .stat-icon.green { background: var(--green-dim); color: var(--green); }
+    .stat-icon.slate { background: var(--slate-100); color: var(--slate-600); }
+    .stat-icon.red   { background: var(--red-dim);   color: var(--red); }
+    .stat-info p { font-size: 0.75rem; color: var(--slate-400); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 3px; }
+    .stat-info strong { font-size: 1.4rem; font-weight: 600; color: var(--slate-900); letter-spacing: -0.02em; }
+
+    /* CARDS */
+    .card { background: var(--white); border: 1.5px solid var(--slate-200); border-radius: 20px; padding: 24px 26px; margin-bottom: 20px; }
+    .card:nth-child(1) { animation: fadeUp 0.4s 0.1s ease both; }
+    .card:nth-child(2) { animation: fadeUp 0.4s 0.15s ease both; }
+    .card:nth-child(3) { animation: fadeUp 0.4s 0.2s ease both; }
+    .card:nth-child(4) { animation: fadeUp 0.4s 0.25s ease both; }
+
+    .card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; }
+    .card-header-icon { width: 34px; height: 34px; background: var(--green-dim); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--green); font-size: 0.875rem; }
+    .card-header h3 { font-size: 1rem; font-weight: 600; color: var(--slate-900); }
+
+    /* TABS */
+    .action-tabs { display: flex; gap: 8px; margin-bottom: 22px; }
+    .tab-btn { flex: 1; padding: 11px 18px; border-radius: 10px; border: 1.5px solid var(--slate-200); background: var(--white); font-family: 'DM Sans', sans-serif; font-size: 0.875rem; font-weight: 500; color: var(--slate-600); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 7px; transition: all 0.2s; }
+    .tab-btn:hover { border-color: var(--green-border); background: var(--green-dim); color: var(--green); }
+    .tab-btn.active.deposit  { background: var(--green); border-color: var(--green); color: white; box-shadow: 0 3px 10px rgba(22,163,74,0.3); }
+    .tab-btn.active.withdraw { background: var(--red);   border-color: var(--red);   color: white; box-shadow: 0 3px 10px rgba(220,38,38,0.3); }
+
+    /* FORM */
+    .form-grid { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
+    .field { flex: 1 1 200px; min-width: 180px; }
+    .field.wide { flex: 2 1 300px; }
+    .field label { display: block; font-size: 0.72rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; color: var(--slate-400); margin-bottom: 6px; }
+    .field input { width: 100%; padding: 11px 14px; border: 1.5px solid var(--slate-200); border-radius: 10px; background: var(--white); font-family: 'DM Sans', sans-serif; font-size: 0.9rem; color: var(--slate-900); transition: border-color 0.2s, box-shadow 0.2s; }
+    .field input::placeholder { color: var(--slate-400); }
+    .field input:focus { outline: none; border-color: var(--green-light); box-shadow: 0 0 0 3px rgba(34,197,94,0.1); }
+
+    .remaining-hint { display: flex; align-items: center; gap: 8px; background: var(--green-dim); border: 1.5px solid var(--green-border); border-radius: 10px; padding: 10px 14px; margin-bottom: 18px; font-size: 0.82rem; color: var(--slate-700); }
+    .remaining-hint i { color: var(--green); }
+    .remaining-hint strong { color: var(--green); }
+
+    .error-msg { font-size: 0.82rem; color: var(--red); background: var(--red-dim); border: 1px solid var(--red-border); border-radius: 8px; padding: 8px 14px; margin-bottom: 16px; display: none; }
+    .success-msg { font-size: 0.82rem; color: var(--green); background: var(--green-dim); border: 1px solid var(--green-border); border-radius: 8px; padding: 8px 14px; margin-bottom: 16px; display: none; }
+
+    .form-actions { display: flex; gap: 10px; margin-top: 18px; align-items: center; }
+    .btn { display: inline-flex; align-items: center; gap: 7px; padding: 10px 20px; border-radius: 10px; border: none; font-family: 'DM Sans', sans-serif; font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: background 0.15s, transform 0.12s, box-shadow 0.15s; }
+    .btn-primary { background: var(--green); color: white; box-shadow: 0 3px 10px rgba(22,163,74,0.3); }
+    .btn-primary:hover { background: #15803d; transform: translateY(-1px); box-shadow: 0 5px 14px rgba(22,163,74,0.35); }
+    .btn-danger  { background: var(--red);   color: white; box-shadow: 0 3px 10px rgba(220,38,38,0.25); }
+    .btn-danger:hover  { background: #b91c1c; transform: translateY(-1px); }
+    .btn-ghost  { background: var(--slate-100); color: var(--slate-600); }
+    .btn-ghost:hover { background: var(--slate-200); }
+
+    /* PROGRESS BAR */
+    .balance-progress { margin: 4px 0 20px; }
+    .balance-progress-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 0.78rem; color: var(--slate-600); font-weight: 500; }
+    .balance-progress-header span strong { color: var(--green); }
+    .balance-progress-bg { height: 8px; background: var(--slate-100); border-radius: 99px; overflow: hidden; }
+    .balance-progress-fill { height: 100%; background: linear-gradient(90deg, var(--green-light), var(--green)); border-radius: 99px; transition: width 0.7s ease; }
+
+    /* HISTORY TABLE */
+    .table-scroll { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    thead tr { border-bottom: 1.5px solid var(--slate-200); }
+    th { text-align: left; padding: 10px 14px; font-size: 0.7rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; color: var(--slate-400); }
+    td { padding: 14px 14px; border-bottom: 1px solid var(--slate-100); color: var(--slate-700); }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover td { background: var(--slate-50); }
+    .amount-cell { font-weight: 600; font-size: 0.925rem; }
+    .amount-cell.deposit  { color: var(--green); }
+    .amount-cell.withdraw { color: var(--red); }
+
+    .type-badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 12px; border-radius: 40px; font-size: 0.75rem; font-weight: 500; }
+    .type-badge.deposit  { background: var(--green-dim); color: var(--green); }
+    .type-badge.withdraw { background: var(--red-dim);   color: var(--red); }
+
+    .empty-state { text-align: center; padding: 48px 20px; color: var(--slate-400); }
+    .empty-state i { font-size: 2.5rem; margin-bottom: 12px; display: block; color: var(--slate-200); }
+    .empty-state p { font-size: 0.9rem; }
+
+    /* CHARTS */
+    .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 680px) { .chart-row { grid-template-columns: 1fr; } }
+    .chart-box { background: var(--slate-50); border: 1.5px solid var(--slate-200); border-radius: 14px; padding: 20px; height: 280px; position: relative; }
+    .chart-box canvas { width: 100% !important; height: 100% !important; }
+
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+
+    @media (max-width: 600px) {
+        body { padding: 20px 16px; }
+        .page-header { flex-direction: column; align-items: flex-start; }
+        .action-tabs { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- PAGE HEADER -->
+  <div class="page-header">
+    <div class="page-title">
+      <div class="page-title-icon"><i class="fas fa-piggy-bank"></i></div>
+      <div><h1>Piggy Bank</h1><p>Save from your remaining salary</p></div>
+    </div>
+    <div class="header-right">
+      <div class="balance-pill"><span>Balance</span><strong id="headerBalance">₹0</strong></div>
+      <button class="back-btn" onclick="window.location.href='dashboard.html'"><i class="fas fa-arrow-left"></i> Dashboard</button>
+    </div>
+  </div>
+
+  <!-- STAT CARDS -->
+  <div class="stat-row">
+    <div class="stat-card">
+      <div class="stat-icon green"><i class="fas fa-piggy-bank"></i></div>
+      <div class="stat-info"><p>Current balance</p><strong id="statBalance">₹0</strong></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon green"><i class="fas fa-arrow-down"></i></div>
+      <div class="stat-info"><p>Total deposited</p><strong id="statDeposits">₹0</strong></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon red"><i class="fas fa-arrow-up"></i></div>
+      <div class="stat-info"><p>Total withdrawn</p><strong id="statWithdrawals">₹0</strong></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon slate"><i class="fas fa-wallet"></i></div>
+      <div class="stat-info"><p>Remaining salary</p><strong id="statRemaining">₹0</strong></div>
+    </div>
+  </div>
+
+  <!-- DEPOSIT / WITHDRAW FORM CARD -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-header-icon"><i class="fas fa-plus-minus"></i></div>
+      <h3>Make a transaction</h3>
+    </div>
+
+    <!-- TABS -->
+    <div class="action-tabs">
+      <button class="tab-btn active deposit" id="tabDeposit" onclick="switchTab('deposit')">
+        <i class="fas fa-arrow-down"></i> Deposit
+      </button>
+      <button class="tab-btn withdraw" id="tabWithdraw" onclick="switchTab('withdraw')">
+        <i class="fas fa-arrow-up"></i> Withdraw
+      </button>
+    </div>
+
+    <!-- HINT -->
+    <div class="remaining-hint" id="remainingHint">
+      <i class="fas fa-info-circle"></i>
+      <span>Remaining salary available to deposit: <strong id="hintRemaining">₹0</strong></span>
+    </div>
+
+    <div id="errorMsg"   class="error-msg"></div>
+    <div id="successMsg" class="success-msg"></div>
+
+    <div class="form-grid">
+      <div class="field">
+        <label>Amount (₹) *</label>
+        <input id="amount" type="number" step="0.01" min="0.01" placeholder="0.00">
+      </div>
+      <div class="field wide">
+        <label>Note (optional)</label>
+        <input id="note" type="text" placeholder="What's this for?">
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" id="submitBtn" onclick="submitTransaction()">
+        <i class="fas fa-arrow-down"></i> Deposit
+      </button>
+      <button class="btn btn-ghost" onclick="resetForm()">
+        <i class="fas fa-xmark"></i> Clear
+      </button>
+    </div>
+  </div>
+
+  <!-- BALANCE OVERVIEW CARD -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-header-icon"><i class="fas fa-chart-simple"></i></div>
+      <h3>Balance overview</h3>
+    </div>
+    <div class="balance-progress">
+      <div class="balance-progress-header">
+        <span>Saved so far</span>
+        <span>Balance: <strong id="progressBalance">₹0</strong> · Deposits: <strong id="progressDeposits">₹0</strong></span>
+      </div>
+      <div class="balance-progress-bg">
+        <div class="balance-progress-fill" id="progressFill" style="width: 0%;"></div>
+      </div>
+    </div>
+    <div class="chart-row">
+      <div class="chart-box"><canvas id="monthlyChart"></canvas></div>
+      <div class="chart-box"><canvas id="typeChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- HISTORY CARD -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-header-icon"><i class="fas fa-clock-rotate-left"></i></div>
+      <h3>Transaction history</h3>
+    </div>
+    <div id="emptyState" class="empty-state" style="display:none;">
+      <i class="fas fa-piggy-bank"></i>
+      <p>No transactions yet — make your first deposit above.</p>
+    </div>
+    <div id="historyTableWrap" class="table-scroll" style="display:none;">
+      <table>
+        <thead>
+        <tr>
+          <th>Date</th>
+          <th>Type</th>
+          <th>Amount</th>
+          <th>Note</th>
+        </tr>
+        </thead>
+        <tbody id="historyTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script src="../js/guard.js"></script>
+<script src="../js/api.js"></script>
+<script>
+  requireUser();
+  let currentTab = 'deposit';
+  let monthlyChart, typeChart;
+  let _summary = null;
+
+  document.addEventListener('DOMContentLoaded', () => {
+      if (typeof requireAuth === 'function') requireAuth();
+      loadAll();
+  });
+
+  function fmt(n) {
+      return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n || 0);
+  }
+
+  function setError(msg) {
+      const el = document.getElementById('errorMsg');
+      el.textContent = msg || '';
+      el.style.display = msg ? 'block' : 'none';
+      document.getElementById('successMsg').style.display = 'none';
+  }
+
+  function setSuccess(msg) {
+      const el = document.getElementById('successMsg');
+      el.textContent = msg || '';
+      el.style.display = msg ? 'block' : 'none';
+      document.getElementById('errorMsg').style.display = 'none';
+  }
+
+  function switchTab(tab) {
+      currentTab = tab;
+      document.getElementById('tabDeposit').className  = 'tab-btn' + (tab === 'deposit'  ? ' active deposit'  : '');
+      document.getElementById('tabWithdraw').className = 'tab-btn' + (tab === 'withdraw' ? ' active withdraw' : '');
+
+      const hint   = document.getElementById('remainingHint');
+      const btn    = document.getElementById('submitBtn');
+
+      if (tab === 'deposit') {
+          hint.style.display  = 'flex';
+          btn.innerHTML  = '<i class="fas fa-arrow-down"></i> Deposit';
+          btn.className  = 'btn btn-primary';
+      } else {
+          hint.style.display  = 'none';
+          btn.innerHTML  = '<i class="fas fa-arrow-up"></i> Withdraw';
+          btn.className  = 'btn btn-danger';
+      }
+      setError(null);
+      setSuccess(null);
+  }
+
+  async function loadAll() {
+      await Promise.all([loadSummary(), loadHistory()]);
+  }
+
+  async function loadSummary() {
+      try {
+          const res = await apiRequest('/piggy-bank/summary');
+          if (!res.ok) return;
+          _summary = await res.json();
+
+          const balance     = parseFloat(_summary.balance)           || 0;
+          const deposits    = parseFloat(_summary.totalDeposits)      || 0;
+          const withdrawals = parseFloat(_summary.totalWithdrawals)   || 0;
+          const remaining   = parseFloat(_summary.remainingSalary)    || 0;
+
+          // Header + stat cards
+          document.getElementById('headerBalance').textContent   = fmt(balance);
+          document.getElementById('statBalance').textContent     = fmt(balance);
+          document.getElementById('statDeposits').textContent    = fmt(deposits);
+          document.getElementById('statWithdrawals').textContent = fmt(withdrawals);
+          document.getElementById('statRemaining').textContent   = fmt(remaining);
+          document.getElementById('statBalance').style.color     = balance >= 0 ? 'var(--green)' : 'var(--red)';
+          document.getElementById('statRemaining').style.color   = remaining >= 0 ? '' : 'var(--red)';
+          document.getElementById('hintRemaining').textContent   = fmt(remaining);
+
+          // Progress bar: balance as % of total deposits
+          const pct = deposits > 0 ? Math.min(100, Math.round((balance / deposits) * 100)) : 0;
+          document.getElementById('progressFill').style.width      = pct + '%';
+          document.getElementById('progressBalance').textContent   = fmt(balance);
+          document.getElementById('progressDeposits').textContent  = fmt(deposits);
+      } catch (err) {
+          console.error('Summary load failed:', err);
+      }
+  }
+
+  async function loadHistory() {
+      try {
+          const res = await apiRequest('/piggy-bank/history');
+          if (!res.ok) return;
+          const data = await res.json();
+
+          const tbody   = document.getElementById('historyTable');
+          const tableW  = document.getElementById('historyTableWrap');
+          const empty   = document.getElementById('emptyState');
+          tbody.innerHTML = '';
+
+          if (!data || data.length === 0) {
+              empty.style.display  = 'block';
+              tableW.style.display = 'none';
+              renderCharts([]);
+              return;
+          }
+
+          empty.style.display  = 'none';
+          tableW.style.display = '';
+
+          data.forEach(tx => {
+              const amt  = parseFloat(tx.amount) || 0;
+              const isD  = tx.type === 'DEPOSIT';
+              const d    = new Date(tx.transactionDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' });
+              tbody.innerHTML += `
+              <tr>
+                  <td>${d}</td>
+                  <td><span class="type-badge ${isD ? 'deposit' : 'withdraw'}">
+                      <i class="fas fa-arrow-${isD ? 'down' : 'up'}" style="font-size:0.65rem;"></i>
+                      ${isD ? 'Deposit' : 'Withdraw'}
+                  </span></td>
+                  <td class="amount-cell ${isD ? 'deposit' : 'withdraw'}">${isD ? '+' : '-'}${fmt(amt)}</td>
+                  <td style="color:var(--slate-400);font-size:0.82rem;">${tx.note || '—'}</td>
+              </tr>`;
+          });
+
+          renderCharts(data);
+      } catch (err) {
+          console.error('History load failed:', err);
+      }
+  }
+
+  function renderCharts(data) {
+      const monthMap = { deposit: {}, withdraw: {} };
+      let totalDep = 0, totalWith = 0;
+
+      data.forEach(tx => {
+          const amt  = parseFloat(tx.amount) || 0;
+          const mon  = (tx.transactionDate || '').slice(0, 7);
+          const type = tx.type === 'DEPOSIT' ? 'deposit' : 'withdraw';
+          monthMap[type][mon] = (monthMap[type][mon] || 0) + amt;
+          if (type === 'deposit') totalDep += amt; else totalWith += amt;
+      });
+
+      if (monthlyChart) monthlyChart.destroy();
+      if (typeChart)    typeChart.destroy();
+
+      // Monthly activity bar chart
+      const allMonths = [...new Set([...Object.keys(monthMap.deposit), ...Object.keys(monthMap.withdraw)])].sort();
+      const mCtx = document.getElementById('monthlyChart').getContext('2d');
+
+      const depGrads  = allMonths.map(() => { const g = mCtx.createLinearGradient(0,0,0,240); g.addColorStop(0,'rgba(22,163,74,0.9)'); g.addColorStop(1,'rgba(22,163,74,0.5)'); return g; });
+      const withGrads = allMonths.map(() => { const g = mCtx.createLinearGradient(0,0,0,240); g.addColorStop(0,'rgba(220,38,38,0.85)'); g.addColorStop(1,'rgba(220,38,38,0.45)'); return g; });
+
+      monthlyChart = new Chart(mCtx, {
+          type: 'bar',
+          data: {
+              labels: allMonths.length ? allMonths : ['No data'],
+              datasets: [
+                  {
+                      label: 'Deposits',
+                      data: allMonths.length ? allMonths.map(m => monthMap.deposit[m] || 0)  : [0],
+                      backgroundColor: allMonths.length ? depGrads  : 'rgba(22,163,74,0.6)',
+                      borderRadius: 8, borderSkipped: false, barPercentage: 0.4
+                  },
+                  {
+                      label: 'Withdrawals',
+                      data: allMonths.length ? allMonths.map(m => monthMap.withdraw[m] || 0) : [0],
+                      backgroundColor: allMonths.length ? withGrads : 'rgba(220,38,38,0.5)',
+                      borderRadius: 8, borderSkipped: false, barPercentage: 0.4
+                  }
+              ]
+          },
+          options: {
+              responsive: true, maintainAspectRatio: false,
+              interaction: { mode: 'index', intersect: false },
+              plugins: {
+                  legend: { position: 'bottom', labels: { boxWidth: 10, padding: 14, font: { family: 'DM Sans', size: 11 }, color: '#475569' } },
+                  tooltip: {
+                      backgroundColor: '#0f172a', titleColor: '#94a3b8', bodyColor: '#ffffff',
+                      padding: 12, cornerRadius: 10,
+                      titleFont: { family: 'DM Sans', size: 11 },
+                      bodyFont: { family: 'DM Sans', size: 13, weight: '600' },
+                      callbacks: { label: ctx => '  ' + new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(ctx.parsed.y) }
+                  }
+              },
+              scales: {
+                  x: { grid: { display: false }, border: { display: false }, ticks: { color: '#94a3b8', font: { family: 'DM Sans', size: 11 } } },
+                  y: { grid: { color: '#f1f5f9' }, border: { display: false },
+                       ticks: { color: '#94a3b8', font: { family: 'DM Sans', size: 11 },
+                           callback: v => '₹' + (v >= 100000 ? (v/100000).toFixed(1)+'L' : v >= 1000 ? (v/1000).toFixed(0)+'K' : v) } }
+              }
+          }
+      });
+
+      // Deposits vs Withdrawals doughnut
+      typeChart = new Chart(document.getElementById('typeChart').getContext('2d'), {
+          type: 'doughnut',
+          data: {
+              labels: ['Deposits', 'Withdrawals'],
+              datasets: [{
+                  data: (totalDep + totalWith) > 0 ? [totalDep, totalWith] : [1, 0],
+                  backgroundColor: ['#16a34a', '#dc2626'],
+                  borderWidth: 2, borderColor: '#fff', hoverOffset: 6
+              }]
+          },
+          options: {
+              responsive: true, maintainAspectRatio: false, cutout: '62%',
+              plugins: {
+                  legend: { position: 'bottom', labels: { boxWidth: 10, padding: 14, font: { family: 'DM Sans', size: 11 }, color: '#475569' } },
+                  tooltip: {
+                      backgroundColor: '#0f172a', titleColor: '#94a3b8', bodyColor: '#ffffff',
+                      padding: 12, cornerRadius: 10,
+                      titleFont: { family: 'DM Sans', size: 11 },
+                      bodyFont: { family: 'DM Sans', size: 13, weight: '600' },
+                      callbacks: { label: ctx => '  ' + new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(ctx.parsed) }
+                  }
+              }
+          }
+      });
+  }
+
+  async function submitTransaction() {
+      const amount = parseFloat(document.getElementById('amount').value);
+      const note   = document.getElementById('note').value.trim();
+
+      if (!amount || amount <= 0) return setError('Please enter a valid amount greater than 0.');
+
+      // Client-side guard for deposit limit
+      if (currentTab === 'deposit' && _summary) {
+          const remaining = parseFloat(_summary.remainingSalary) || 0;
+          if (amount > remaining) {
+              return setError(`Amount exceeds your remaining salary of ${fmt(remaining)}. Please enter a lower amount.`);
+          }
+      }
+      if (currentTab === 'withdraw' && _summary) {
+          const balance = parseFloat(_summary.balance) || 0;
+          if (amount > balance) {
+              return setError(`Amount exceeds your piggy bank balance of ${fmt(balance)}.`);
+          }
+      }
+
+      setError(null);
+      const url     = currentTab === 'deposit' ? '/piggy-bank/deposit' : '/piggy-bank/withdraw';
+      const payload = { amount, note: note || null };
+
+      try {
+          const res = await apiRequest(url, { method: 'POST', body: JSON.stringify(payload) });
+          if (res.ok) {
+              setSuccess(currentTab === 'deposit' ? `Successfully deposited ${fmt(amount)}!` : `Successfully withdrew ${fmt(amount)}!`);
+              resetForm();
+              await loadAll();
+          } else {
+              const err = await res.json().catch(() => ({}));
+              setError(err.message || 'Transaction failed. Please try again.');
+          }
+      } catch (e) {
+          setError('Network error. Please try again.');
+      }
+  }
+
+  function resetForm() {
+      document.getElementById('amount').value = '';
+      document.getElementById('note').value   = '';
+      setError(null);
+      setSuccess(null);
+  }
+</script>
+</body>
+</html>
