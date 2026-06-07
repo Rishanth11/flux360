@@ -1,5 +1,7 @@
 package com.rishanth.flux360.service;
 
+import org.springframework.beans.factory.annotation.Value;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -15,150 +17,313 @@ import java.time.Instant;
 import java.util.Map;
 
 /**
- * GoldPriceService — Updated to read ALL config from ApiConfigService (DB-backed).
+ * GoldPriceService
  *
- * WHAT CHANGED FROM ORIGINAL:
- *   - goldApiKey        → apiConfig.get("GOLD_API_KEY")
- *   - primary URL       → apiConfig.get("GOLD_API_URL")
- *   - fallback URL      → apiConfig.get("GOLD_FALLBACK_URL")
- *   - cache TTL         → apiConfig.getInt("GOLD_CACHE_TTL_MINUTES", 15)
- *   - India correction  → apiConfig.getBigDecimal("GOLD_INDIA_CORRECTION", 1.0433)
- *   - USD/INR approx    → apiConfig.getBigDecimal("USD_TO_INR_APPROX", 84.50)
- *
- * Everything else (caching logic, fallback chain, timeouts) is unchanged.
+ * Reads all config dynamically from ApiConfigService.
+ * Supports:
+ * - primary API
+ * - fallback API
+ * - in-memory caching
+ * - India market correction
+ * - DB runtime config
  */
+@Slf4j
 @Service
 public class GoldPriceService {
 
     private final ApiConfigService apiConfig;
 
-    // ── Manual in-memory cache ────────────────────────────────────────────────
-    private volatile BigDecimal cachedPrice = null;
-    private volatile Instant    cacheTime   = Instant.MIN;
+    @Value("${gold.api.url}")
+    private String goldApiUrl;
 
-    // ── RestTemplate with generous timeouts ───────────────────────────────────
+    @Value("${gold.fallback.url}")
+    private String goldFallbackUrl;
+
+    // ─────────────────────────────────────────────
+    // CACHE
+    // ─────────────────────────────────────────────
+
+    private volatile BigDecimal cachedPrice = null;
+    private volatile Instant cacheTime = Instant.MIN;
+
+    // ─────────────────────────────────────────────
+    // HTTP CLIENT
+    // ─────────────────────────────────────────────
+
     private final RestTemplate restTemplate;
 
     public GoldPriceService(ApiConfigService apiConfig) {
+
         this.apiConfig = apiConfig;
 
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        SimpleClientHttpRequestFactory factory =
+                new SimpleClientHttpRequestFactory();
+
         factory.setConnectTimeout(12_000);
         factory.setReadTimeout(12_000);
+
         this.restTemplate = new RestTemplate(factory);
     }
 
+    // ─────────────────────────────────────────────
+    // PUBLIC API
+    // ─────────────────────────────────────────────
+
     public BigDecimal getLiveGoldPricePerGram() {
-        // ── Cache TTL from DB (default 15 min) ───────────────────────────────
-        int ttlMinutes = apiConfig.getInt("GOLD_CACHE_TTL_MINUTES", 15);
+
+        int ttlMinutes =
+                apiConfig.getInt(
+                        "GOLD_CACHE_TTL_MINUTES",
+                        15
+                );
+
         Duration cacheTtl = Duration.ofMinutes(ttlMinutes);
 
+        // ── Serve cache if valid ─────────────────
+
         if (cachedPrice != null &&
-                Duration.between(cacheTime, Instant.now()).compareTo(cacheTtl) < 0) {
-            System.out.println("✅ Gold price served from cache: ₹" + cachedPrice + "/g");
+                Duration.between(
+                        cacheTime,
+                        Instant.now()
+                ).compareTo(cacheTtl) < 0) {
+
+            log.info(
+                    "Gold price served from cache: ₹{}/g",
+                    cachedPrice
+            );
+
             return cachedPrice;
         }
+
+        // ── Primary API ─────────────────────────
 
         BigDecimal result = fetchFromGoldApiInr();
 
+        // ── Fallback API ────────────────────────
+
         if (result == null) {
-            System.out.println("⚠️ Primary goldapi.io failed, trying fallback...");
+
+            log.warn(
+                    "Primary gold API failed. Trying fallback API..."
+            );
+
             result = fetchFallbackPrice();
         }
 
+        // ── Success ─────────────────────────────
+
         if (result != null) {
+
             cachedPrice = result;
-            cacheTime   = Instant.now();
+            cacheTime = Instant.now();
+
             return result;
         }
 
+        // ── Serve stale cache ───────────────────
+
         if (cachedPrice != null) {
-            System.out.println("⚠️ All APIs failed — serving stale gold cache: ₹" + cachedPrice + "/g");
+
+            log.warn(
+                    "All APIs failed. Serving stale gold cache: ₹{}/g",
+                    cachedPrice
+            );
+
             return cachedPrice;
         }
 
-        System.out.println("❌ No cache and all APIs failed — returning hardcoded approximate");
+        // ── Final hardcoded fallback ────────────
+
+        log.error(
+                "No cache and all APIs failed. Returning hardcoded fallback price."
+        );
+
         return new BigDecimal("14000.00");
     }
 
+    // ─────────────────────────────────────────────
+    // PRIMARY API
+    // ─────────────────────────────────────────────
+
     private BigDecimal fetchFromGoldApiInr() {
+
         try {
-            // ── URL and key from DB ───────────────────────────────────────────
-            String url    = apiConfig.get("GOLD_API_URL", "https://www.goldapi.io/api/XAU/INR");
-            String apiKey = apiConfig.get("GOLD_API_KEY");
+
+            String url = goldApiUrl;
+
+            String apiKey =
+                    apiConfig.get("GOLD_API_KEY");
 
             if (apiKey.isBlank()) {
-                System.out.println("❌ GOLD_API_KEY is empty in DB and env — skipping primary fetch");
+
+                log.error(
+                        "GOLD_API_KEY is empty. Skipping primary gold fetch."
+                );
+
                 return null;
             }
 
             HttpHeaders headers = new HttpHeaders();
+
             headers.set("x-access-token", apiKey);
             headers.set("Content-Type", "application/json");
 
-            HttpEntity<Void> request = new HttpEntity<>(headers);
-            ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.GET, request, Map.class);
+            HttpEntity<Void> request =
+                    new HttpEntity<>(headers);
+
+            ResponseEntity<Map> response =
+                    restTemplate.exchange(
+                            url,
+                            HttpMethod.GET,
+                            request,
+                            Map.class
+                    );
 
             Map body = response.getBody();
-            if (body == null || !body.containsKey("price")) {
-                System.out.println("❌ goldapi.io XAU/INR: unexpected response: " + body);
+
+            if (body == null ||
+                    !body.containsKey("price")) {
+
+                log.error(
+                        "Unexpected response from goldapi.io: {}",
+                        body
+                );
+
                 return null;
             }
 
-            BigDecimal priceInrPerOz = new BigDecimal(body.get("price").toString());
-            BigDecimal gramsPerOz    = new BigDecimal("31.1035");
+            BigDecimal priceInrPerOz =
+                    new BigDecimal(
+                            body.get("price").toString()
+                    );
 
-            // ── Correction factor from DB ─────────────────────────────────────
-            BigDecimal correctionFactor = apiConfig.getBigDecimal(
-                    "GOLD_INDIA_CORRECTION", new BigDecimal("1.0433"));
+            BigDecimal gramsPerOz =
+                    new BigDecimal("31.1035");
 
-            BigDecimal adjusted = priceInrPerOz
-                    .divide(gramsPerOz, 4, RoundingMode.HALF_UP)
-                    .multiply(correctionFactor)
-                    .setScale(2, RoundingMode.HALF_UP);
+            BigDecimal correctionFactor =
+                    apiConfig.getBigDecimal(
+                            "GOLD_INDIA_CORRECTION",
+                            new BigDecimal("1.0433")
+                    );
 
-            System.out.println("✅ Gold (goldapi.io): ₹" + priceInrPerOz + "/oz → ₹" + adjusted + "/g (factor: " + correctionFactor + ")");
+            BigDecimal adjusted =
+                    priceInrPerOz
+                            .divide(
+                                    gramsPerOz,
+                                    4,
+                                    RoundingMode.HALF_UP
+                            )
+                            .multiply(correctionFactor)
+                            .setScale(
+                                    2,
+                                    RoundingMode.HALF_UP
+                            );
+
+            log.info(
+                    "Gold price fetched from goldapi.io: ₹{}/g",
+                    adjusted
+            );
+
             return adjusted;
 
         } catch (Exception e) {
-            System.out.println("❌ goldapi.io XAU/INR fetch failed: " + e.getMessage());
+
+            log.error(
+                    "goldapi.io fetch failed: {}",
+                    e.getMessage()
+            );
+
             return null;
         }
     }
+
+    // ─────────────────────────────────────────────
+    // FALLBACK API
+    // ─────────────────────────────────────────────
 
     private BigDecimal fetchFallbackPrice() {
-        try {
-            String url = apiConfig.get("GOLD_FALLBACK_URL", "https://api.gold-api.com/price/XAU");
-            Map body   = restTemplate.getForObject(url, Map.class);
 
-            if (body == null || !body.containsKey("price")) {
-                System.out.println("❌ Fallback gold-api.com: unexpected response");
+        try {
+
+            String url = goldFallbackUrl;
+
+            Map body =
+                    restTemplate.getForObject(
+                            url,
+                            Map.class
+                    );
+
+            if (body == null ||
+                    !body.containsKey("price")) {
+
+                log.error(
+                        "Unexpected fallback API response."
+                );
+
                 return null;
             }
 
-            BigDecimal priceUsdPerOz   = new BigDecimal(body.get("price").toString());
-            BigDecimal usdToInr        = apiConfig.getBigDecimal("USD_TO_INR_APPROX", new BigDecimal("84.50"));
-            BigDecimal gramsPerOz      = new BigDecimal("31.1035");
-            BigDecimal correctionFactor = apiConfig.getBigDecimal("GOLD_INDIA_CORRECTION", new BigDecimal("1.0433"));
+            BigDecimal priceUsdPerOz =
+                    new BigDecimal(
+                            body.get("price").toString()
+                    );
 
-            BigDecimal adjusted = priceUsdPerOz
-                    .multiply(usdToInr)
-                    .divide(gramsPerOz, 4, RoundingMode.HALF_UP)
-                    .multiply(correctionFactor)
-                    .setScale(2, RoundingMode.HALF_UP);
+            BigDecimal usdToInr =
+                    apiConfig.getBigDecimal(
+                            "USD_TO_INR_APPROX",
+                            new BigDecimal("84.50")
+                    );
 
-            System.out.println("⚠️ Fallback gold (gold-api.com): ₹" + adjusted + "/g");
+            BigDecimal gramsPerOz =
+                    new BigDecimal("31.1035");
+
+            BigDecimal correctionFactor =
+                    apiConfig.getBigDecimal(
+                            "GOLD_INDIA_CORRECTION",
+                            new BigDecimal("1.0433")
+                    );
+
+            BigDecimal adjusted =
+                    priceUsdPerOz
+                            .multiply(usdToInr)
+                            .divide(
+                                    gramsPerOz,
+                                    4,
+                                    RoundingMode.HALF_UP
+                            )
+                            .multiply(correctionFactor)
+                            .setScale(
+                                    2,
+                                    RoundingMode.HALF_UP
+                            );
+
+            log.warn(
+                    "Fallback gold API used. Price: ₹{}/g",
+                    adjusted
+            );
+
             return adjusted;
 
         } catch (Exception e) {
-            System.out.println("❌ Fallback gold-api.com also failed: " + e.getMessage());
+
+            log.error(
+                    "Fallback gold API failed: {}",
+                    e.getMessage()
+            );
+
             return null;
         }
     }
 
+    // ─────────────────────────────────────────────
+    // CACHE MANAGEMENT
+    // ─────────────────────────────────────────────
+
     public void evictCache() {
+
         cachedPrice = null;
-        cacheTime   = Instant.MIN;
-        System.out.println("🔄 Gold price cache evicted by admin");
+        cacheTime = Instant.MIN;
+
+        log.info("Gold cache evicted.");
     }
 }

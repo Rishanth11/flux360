@@ -1,218 +1,284 @@
 package com.rishanth.flux360.service;
 
-import com.rishanth.flux360.model.ApiConfigEntity;
+import com.rishanth.flux360.exception.ResourceNotFoundException;
+import com.rishanth.flux360.entity.ApiConfigEntity;
 import com.rishanth.flux360.repository.ApiConfigRepository;
 import jakarta.annotation.PostConstruct;
+import jakarta.transaction.Transactional;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-/**
- * ApiConfigService — Single source of truth for all API keys, URLs, and settings.
- *
- * PRIORITY ORDER:
- *   1. DB value (admin-managed, runtime-changeable)
- *   2. Environment variable / application.properties value (safe fallback)
- *   3. Hardcoded default (last resort, never null)
- *
- * HOW TO USE IN OTHER SERVICES:
- *   @Autowired ApiConfigService apiConfig;
- *   String key = apiConfig.get("GOLD_API_KEY");
- *   String url = apiConfig.get("GOLD_API_URL");
- */
+@Slf4j
 @Service
+@RequiredArgsConstructor
 public class ApiConfigService {
 
     private final ApiConfigRepository repo;
 
-    // ── Env var / properties fallbacks ───────────────────────────────────────
+    // ─────────────────────────────────────────────
+    // ENVIRONMENT FALLBACKS
+    // ─────────────────────────────────────────────
+
     @Value("${goldapi.key:}")
     private String envGoldApiKey;
 
-    @Value("${twelvedata.api.key:}")
-    private String envTwelvedataKey;
+    /**
+     * Map-based env fallback — avoids manual switch maintenance.
+     * Populated after @Value injection via @PostConstruct.
+     */
+    private Map<String, String> envFallbackMap;
 
-    public ApiConfigService(ApiConfigRepository repo) {
-        this.repo = repo;
-    }
+    // ─────────────────────────────────────────────
+    // INITIAL DEFAULT SEEDING
+    // ─────────────────────────────────────────────
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // SEED DEFAULTS on first startup
-    // If a key doesn't exist in DB yet, insert it with env/default value.
-    // This runs once on startup — safe to re-run (uses existsByConfigKey check).
-    // ─────────────────────────────────────────────────────────────────────────
     @PostConstruct
     public void seedDefaults() {
-        seed("GOLD_API_KEY",
-                envGoldApiKey.isBlank() ? "" : envGoldApiKey,
-                "goldapi.io access token for Gold & Silver prices",
-                "KEYS", true);
 
-        seed("TWELVEDATA_API_KEY",
-                envTwelvedataKey.isBlank() ? "" : envTwelvedataKey,
-                "Twelvedata.com API key for live stock prices",
-                "KEYS", true);
+        // Build env fallback map after @Value fields are injected
+        envFallbackMap = Map.of(
+                "GOLD_API_KEY",       envGoldApiKey
+        );
 
-        seed("GOLD_API_URL",
-                "https://www.goldapi.io/api/XAU/INR",
-                "Primary Gold price endpoint (XAU/INR)",
-                "GOLD", false);
-
-        seed("GOLD_FALLBACK_URL",
-                "https://api.gold-api.com/price/XAU",
-                "Fallback Gold price endpoint (USD, no key needed)",
-                "GOLD", false);
-
-        seed("SILVER_API_URL",
-                "https://www.goldapi.io/api/XAG/INR",
-                "Primary Silver price endpoint (XAG/INR)",
-                "SILVER", false);
-
-        seed("SILVER_FALLBACK_URL",
-                "https://api.gold-api.com/price/XAG",
-                "Fallback Silver price endpoint (USD, no key needed)",
-                "SILVER", false);
-
-        seed("MFAPI_BASE_URL",
-                "https://api.mfapi.in/mf",
-                "MFAPI.in base URL for SIP NAV fetch",
-                "SIP", false);
-
-        seed("MFAPI_SEARCH_URL",
-                "https://api.mfapi.in/mf/search",
-                "MFAPI.in search endpoint for fund scheme lookup",
-                "SIP", false);
-
-        seed("GOLD_CACHE_TTL_MINUTES",
+        seed(
+                "GOLD_CACHE_TTL_MINUTES",
                 "15",
-                "Gold price cache TTL in minutes",
-                "CACHE", false);
+                "Gold cache TTL",
+                "CACHE",
+                false,
+                true
+        );
 
-        seed("SILVER_CACHE_TTL_MINUTES",
+        seed(
+                "SILVER_CACHE_TTL_MINUTES",
                 "15",
-                "Silver price cache TTL in minutes",
-                "CACHE", false);
+                "Silver cache TTL",
+                "CACHE",
+                false,
+                true
+        );
 
-        seed("GOLD_INDIA_CORRECTION",
+        seed(
+                "GOLD_INDIA_CORRECTION",
                 "1.0433",
-                "India correction factor for gold (GST 3% + customs ~1% + MCX ~0.33%)",
-                "CORRECTION", false);
+                "India gold correction factor",
+                "CORRECTION",
+                false,
+                true
+        );
 
-        seed("SILVER_INDIA_CORRECTION",
+        seed(
+                "SILVER_INDIA_CORRECTION",
                 "1.0766",
-                "India correction factor for silver (GST 3% + customs ~1% + MCX ~3.66%)",
-                "CORRECTION", false);
+                "India silver correction factor",
+                "CORRECTION",
+                false,
+                true
+        );
 
-        seed("USD_TO_INR_APPROX",
+        seed(
+                "USD_TO_INR_APPROX",
                 "84.50",
-                "Approximate USD to INR rate used in fallback price calculation",
-                "CORRECTION", false);
+                "Approx USD to INR conversion",
+                "CORRECTION",
+                false,
+                true
+        );
 
-        System.out.println("✅ ApiConfigService: defaults seeded into DB");
     }
 
-    private void seed(String key, String value, String desc, String category, boolean sensitive) {
+    // ─────────────────────────────────────────────
+    // INTERNAL SEED METHOD
+    // ─────────────────────────────────────────────
+
+    private void seed(
+            String key,
+            String value,
+            String description,
+            String category,
+            boolean sensitive,
+            boolean editable
+    ) {
+
         if (!repo.existsByConfigKey(key)) {
-            repo.save(new ApiConfigEntity(key, value, desc, category, sensitive));
+
+            repo.save(
+                    ApiConfigEntity.builder()
+                            .configKey(key)
+                            .configValue(value)
+                            .description(description)
+                            .category(category)
+                            .sensitive(sensitive)
+                            .editable(editable)
+                            .build()
+            );
+
+            log.info("Seeded config: {}", key);
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // GET — DB first, then env var fallback, then hardcoded default
-    // ─────────────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────
+    // GET CONFIG
+    // ─────────────────────────────────────────────
 
     /**
-     * Get config value by key.
-     * Returns empty string (never null) if nothing found.
+     * DB → ENV → EMPTY STRING
+     * Result cached by key to avoid repeated DB hits.
      */
+    @Cacheable(value = "apiConfig", key = "#key")
     public String get(String key) {
-        Optional<ApiConfigEntity> opt = repo.findByConfigKey(key);
-        if (opt.isPresent() && !opt.get().getConfigValue().isBlank()) {
-            return opt.get().getConfigValue().trim();
+
+        Optional<ApiConfigEntity> optional =
+                repo.findByConfigKey(key);
+
+        if (optional.isPresent()) {
+
+            String value = optional.get().getConfigValue();
+
+            if (value != null && !value.isBlank()) {
+                return value.trim();
+            }
         }
-        // Fallback to env vars for sensitive keys
+
         return envFallback(key);
     }
 
     /**
-     * Get config value with a hardcoded default if nothing found.
+     * DB → ENV → DEFAULT
      */
     public String get(String key, String defaultValue) {
-        String val = get(key);
-        return val.isBlank() ? defaultValue : val;
+
+        String value = get(key);
+
+        return value.isBlank() ? defaultValue : value;
     }
 
-    /**
-     * Get config value as BigDecimal (for correction factors, etc.)
-     */
-    public java.math.BigDecimal getBigDecimal(String key, java.math.BigDecimal defaultValue) {
+    // ─────────────────────────────────────────────
+    // TYPE SAFE ACCESSORS
+    // ─────────────────────────────────────────────
+
+    public BigDecimal getBigDecimal(
+            String key,
+            BigDecimal defaultValue
+    ) {
+
         try {
-            String val = get(key);
-            return val.isBlank() ? defaultValue : new java.math.BigDecimal(val);
-        } catch (NumberFormatException e) {
+
+            String value = get(key);
+
+            return value.isBlank()
+                    ? defaultValue
+                    : new BigDecimal(value);
+
+        } catch (Exception e) {
+
+            log.warn("Invalid BigDecimal config for key: {}", key);
+
             return defaultValue;
         }
     }
 
-    /**
-     * Get config value as int (for TTL minutes, etc.)
-     */
     public int getInt(String key, int defaultValue) {
+
         try {
-            String val = get(key);
-            return val.isBlank() ? defaultValue : Integer.parseInt(val);
-        } catch (NumberFormatException e) {
+
+            String value = get(key);
+
+            return value.isBlank()
+                    ? defaultValue
+                    : Integer.parseInt(value);
+
+        } catch (Exception e) {
+
+            log.warn("Invalid int config for key: {}", key);
+
             return defaultValue;
         }
     }
+
+    // ─────────────────────────────────────────────
+    // ENV FALLBACKS
+    // ─────────────────────────────────────────────
 
     private String envFallback(String key) {
-        return switch (key) {
-            case "GOLD_API_KEY"       -> envGoldApiKey;
-            case "TWELVEDATA_API_KEY" -> envTwelvedataKey;
-            default -> "";
-        };
+        return envFallbackMap.getOrDefault(key, "");
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────
     // ADMIN CRUD
-    // ─────────────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────
 
     public List<ApiConfigEntity> getAll() {
         return repo.findAll();
     }
 
     public List<ApiConfigEntity> getByCategory(String category) {
-        return repo.findByCategory(category);
+        return repo.findByCategoryOrderByConfigKeyAsc(
+                category.toUpperCase()
+        );
     }
 
     /**
-     * Update a config value. Creates it if it doesn't exist.
+     * Update a config value.
+     *
+     * FIX 1: orElseThrow — unknown keys are rejected (no ghost CUSTOM entries).
+     * FIX 2: editable check — non-editable keys cannot be changed at runtime.
+     * FIX 3: Cache evicted so next get() reads fresh value from DB.
      */
-    public ApiConfigEntity update(String key, String value, String updatedBy) {
+    @Transactional
+    @CacheEvict(value = "apiConfig", key = "#key")
+    public ApiConfigEntity update(
+            String key,
+            String value,
+            String updatedBy
+    ) {
+
         ApiConfigEntity entity = repo.findByConfigKey(key)
-                .orElse(new ApiConfigEntity(key, value, "", "CUSTOM", false));
-        entity.setConfigValue(value.trim());
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Config key not found: " + key
+                ));
+
+        if (!entity.isEditable()) {
+            throw new IllegalStateException(
+                    "Config key is not editable: " + key
+            );
+        }
+
+        entity.setConfigValue(value == null ? "" : value.trim());
         entity.setUpdatedBy(updatedBy);
+
         ApiConfigEntity saved = repo.save(entity);
-        System.out.println("🔧 ApiConfig updated: " + key + " by " + updatedBy);
+
+        log.info("ApiConfig updated: {} by {}", key, updatedBy);
+
         return saved;
     }
 
-    /**
-     * Bulk update multiple keys at once (used by admin page Save All button).
-     */
-    public void updateBulk(Map<String, String> updates, String updatedBy) {
-        for (Map.Entry<String, String> entry : updates.entrySet()) {
-            update(entry.getKey(), entry.getValue(), updatedBy);
-        }
+    @Transactional
+    public void updateBulk(
+            Map<String, String> updates,
+            String updatedBy
+    ) {
+
+        updates.forEach((key, value) -> update(key, value, updatedBy));
+
+        log.info("Bulk ApiConfig update completed by {}", updatedBy);
     }
 
     public ApiConfigEntity getEntityByKey(String key) {
+
         return repo.findByConfigKey(key)
-                .orElseThrow(() -> new RuntimeException("Config key not found: " + key));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Config key not found: " + key
+                ));
     }
 }

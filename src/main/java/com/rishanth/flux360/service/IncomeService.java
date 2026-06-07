@@ -1,12 +1,12 @@
 package com.rishanth.flux360.service;
 
 import com.rishanth.flux360.dto.IncomeDTO;
-import com.rishanth.flux360.model.Income;
-import com.rishanth.flux360.model.User;
+import com.rishanth.flux360.entity.Income;
+import com.rishanth.flux360.entity.User;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Optional;
 
 public interface IncomeService {
 
@@ -14,11 +14,17 @@ public interface IncomeService {
 
     List<Income> findByUser(User user);
 
-    Optional<Income> findById(Long id);
+    Income findById(Long id, User user);
 
     Income updateIncome(Long id, IncomeDTO dto, User user);
 
-    void deleteById(Long id);
+    void deleteIncome(Long id, User user);
 
-    List<Income> findByUserAndDateRange(User user, LocalDate start, LocalDate end);
+    List<Income> findByUserAndDateRange(
+            User user,
+            LocalDate start,
+            LocalDate end
+    );
+
+    BigDecimal getTotalIncome(Long userId);
 }

@@ -1,22 +1,28 @@
 package com.rishanth.flux360.repository;
 
-import com.rishanth.flux360.model.Budget;
+import com.rishanth.flux360.entity.Budget;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
 
 public interface BudgetRepository extends JpaRepository<Budget, Long> {
 
-    // Fetch budgets WITH their categories in one query — fixes the lazy loading issue
-    @Query("SELECT DISTINCT b FROM Budget b LEFT JOIN FETCH b.categories WHERE b.userId = :userId")
-    List<Budget> findByUserIdWithCategories(@Param("userId") Long userId);
+    @Query("""
+        SELECT DISTINCT b
+        FROM Budget b
+        LEFT JOIN FETCH b.categories
+        WHERE b.user.id = :userId
+    """)
+    List<Budget> findByUserIdWithCategories(Long userId);
 
-    @Query("SELECT DISTINCT b FROM Budget b LEFT JOIN FETCH b.categories WHERE b.id = :id")
-    Optional<Budget> findByIdWithCategories(@Param("id") Long id);
-
-    List<Budget> findByUserId(Long userId);
-    List<Budget> findByUserIdAndBudgetType(Long userId, Budget.BudgetType budgetType);
+    @Query("""
+        SELECT DISTINCT b
+        FROM Budget b
+        LEFT JOIN FETCH b.categories
+        WHERE b.id = :budgetId
+        AND b.user.id = :userId
+    """)
+    Optional<Budget> findByIdAndUserId(Long budgetId, Long userId);
 }

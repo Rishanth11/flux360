@@ -443,6 +443,7 @@
 <script src="../js/guard.js"></script>
 <script src="../js/api.js"></script>
 <script>
+    requireUser();
     let chart;
     let allPurchases     = [];
     let currentLivePrice = 0;
@@ -482,41 +483,53 @@
 
     // Refresh button — applies same India correction as backend
     async function fetchLivePrice() {
-        setLiveStatus('Fetching live gold price…', '');
-        try {
-            // Step 1: XAU/USD spot price
-            const goldRes       = await fetch('https://api.gold-api.com/price/XAU');
-            const goldData      = await goldRes.json();
-            const priceUsdPerOz = parseFloat(goldData.price);
-            if (!priceUsdPerOz || priceUsdPerOz <= 0) throw new Error('Invalid gold price');
 
-            // Step 2: USD → INR exchange rate
-            const fxRes    = await fetch('https://api.frankfurter.app/latest?from=USD&to=INR');
-            const fxData   = await fxRes.json();
-            const usdToInr = parseFloat(fxData.rates.INR);
-            if (!usdToInr || usdToInr <= 0) throw new Error('Invalid exchange rate');
+    setLiveStatus('Fetching live gold price…', '');
 
-            // Step 3: Base INR per gram
-            const baseInrPerGram = (priceUsdPerOz * usdToInr) / 31.1035;
+    try {
 
-            // Step 4: Apply India correction (+4.33%) — matches GoldPriceService.java exactly
-            const adjustedInrPerGram = Math.round(baseInrPerGram * INDIA_CORRECTION_FACTOR);
+        const res = await apiRequest('/gold/price');
 
-            document.getElementById('livePriceInput').value = adjustedInrPerGram;
-            currentLivePrice = adjustedInrPerGram;
-
-            const ts = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-            setLiveStatus(
-                `✓ Refreshed at ${ts} — $${priceUsdPerOz.toLocaleString()} /oz × ₹${Math.round(usdToInr)}/$ × ${INDIA_CORRECTION_FACTOR} = ₹${adjustedInrPerGram.toLocaleString('en-IN')}/g (24K)`,
-                'success'
-            );
-            recalculate();
-
-        } catch (e) {
-            console.error('Live price fetch failed:', e);
-            setLiveStatus('Could not fetch live price. Check your internet or enter manually.', 'error');
+        if (!res.ok) {
+            throw new Error('Backend price fetch failed');
         }
+
+        const livePrice = parseFloat(await res.text());
+
+        if (!livePrice || livePrice <= 0) {
+            throw new Error('Invalid live price');
+        }
+
+        currentLivePrice = livePrice;
+
+        document.getElementById('livePriceInput').value =
+            livePrice.toFixed(2);
+
+        const ts = new Date().toLocaleTimeString(
+            'en-IN',
+            {
+                hour: '2-digit',
+                minute: '2-digit'
+            }
+        );
+
+        setLiveStatus(
+            `✓ Live gold price refreshed at ${ts} — ₹${livePrice.toLocaleString('en-IN')}/g`,
+            'success'
+        );
+
+        recalculate();
+
+    } catch (e) {
+
+        console.error('Live price fetch failed:', e);
+
+        setLiveStatus(
+            'Could not fetch live price from server.',
+            'error'
+        );
     }
+}
 
     function recalculate() {
         const inputVal = parseFloat(document.getElementById('livePriceInput').value);
@@ -571,7 +584,7 @@
         if (!res.ok) return;
         const data = await res.json();
 
-        if (data.livePrice && parseFloat(data.livePrice) > 0) {
+        if (data.livePrice != null && parseFloat(data.livePrice) > 0) {
             currentLivePrice = parseFloat(data.livePrice);
             document.getElementById('livePriceInput').value = currentLivePrice;
             const ts = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });

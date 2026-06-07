@@ -1,7 +1,7 @@
 package com.rishanth.flux360.repository;
 
-import com.rishanth.flux360.model.StockWatchlist;
-import com.rishanth.flux360.model.User;
+import com.rishanth.flux360.entity.StockWatchlist;
+import com.rishanth.flux360.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;

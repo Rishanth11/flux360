@@ -1,29 +1,28 @@
 package com.rishanth.flux360.repository;
 
-import com.rishanth.flux360.model.Goal;
-import com.rishanth.flux360.model.GoalStatus;
+import com.rishanth.flux360.entity.Goal;
+import com.rishanth.flux360.entity.GoalStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
-import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface GoalRepository extends JpaRepository<Goal, Long> {
 
-    List<Goal> findByStatusOrderByPriorityAscTargetDateAsc(GoalStatus status);
+    List<Goal> findByUserIdOrderByPriorityAscTargetDateAsc(Long userId);
 
-    List<Goal> findAllByOrderByPriorityAscTargetDateAsc();
+    List<Goal> findByUserIdAndStatus(Long userId,
+                                     GoalStatus status);
 
-    List<Goal> findByStatus(GoalStatus status);
+    Optional<Goal> findByIdAndUserId(Long goalId,
+                                     Long userId);
 
-    @Query("SELECT COALESCE(SUM(g.targetAmount), 0) FROM Goal g WHERE g.status = 'ACTIVE'")
-    BigDecimal sumTargetAmountByActiveGoals();
+    long countByUserId(Long userId);
 
-    @Query("SELECT COALESCE(SUM(g.savedAmount), 0) FROM Goal g WHERE g.status = 'ACTIVE'")
-    BigDecimal sumSavedAmountByActiveGoals();
+    long countByUserIdAndStatus(Long userId,
+                                GoalStatus status);
 
-    @Query("SELECT COUNT(g) FROM Goal g WHERE g.status = 'COMPLETED'")
-    long countCompletedGoals();
+    List<Goal> findByUserId(Long userId);
 }

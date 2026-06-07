@@ -1,7 +1,7 @@
 package com.rishanth.flux360.config;
 
-import com.rishanth.flux360.model.Role;
-import com.rishanth.flux360.model.User;
+import com.rishanth.flux360.entity.Role;
+import com.rishanth.flux360.entity.User;
 import com.rishanth.flux360.repository.UserRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;

@@ -328,19 +328,32 @@
         <label>Target Date *</label>
         <input id="g-targetDate" type="date" oninput="calcProjection()" />
       </div>
-      <div class="field" style="flex-basis:100%;">
-        <label>Linked Account</label>
-        <input id="g-account" placeholder="e.g. SBI Savings, HDFC RD…" />
-      </div>
     </div>
 
-    <div class="hint-box" id="projectionHint">
+    <div class="hint-box" id="projectionHint" style="display:none;">
       <span id="projectionText"></span>
     </div>
 
     <div class="form-actions">
-      <button class="btn btn-primary" onclick="saveGoal()"><i class="fas fa-check"></i> Save Goal</button>
-      <button class="btn btn-ghost" onclick="closeModal('goalModal')">Cancel</button>
+
+      <button
+              id="saveGoalBtn"
+              class="btn btn-primary"
+              onclick="saveGoal()">
+
+        <i class="fas fa-check"></i>
+        Save Goal
+
+      </button>
+
+      <button
+              class="btn btn-ghost"
+              onclick="closeModal('goalModal')">
+
+        Cancel
+
+      </button>
+
     </div>
   </div>
 </div>
@@ -389,377 +402,1035 @@
 
 <script src="../js/guard.js"></script>
 <script src="../js/api.js"></script>
+
 <script>
-  // ── apiRequest() already prepends /api, so use /goals not /api/goals ──
+  requireUser();
   const API = '/goals';
 
   let allGoals = [];
   let editingId = null;
   let activeContributeGoalId = null;
 
+  // ───────────────── FORMATTERS ─────────────────
+
   function fmt(v) {
-    return new Intl.NumberFormat('en-IN', { style:'currency', currency:'INR', minimumFractionDigits:0, maximumFractionDigits:0 }).format(v || 0);
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(v || 0);
   }
+
   function fmtShort(v) {
+
     const n = Number(v);
-    if (Math.abs(n) >= 1e7) return '₹' + (n/1e7).toFixed(2) + 'Cr';
-    if (Math.abs(n) >= 1e5) return '₹' + (n/1e5).toFixed(2) + 'L';
-    if (Math.abs(n) >= 1e3) return '₹' + (n/1e3).toFixed(1) + 'K';
+
+    if (Math.abs(n) >= 1e7) {
+      return '₹' + (n / 1e7).toFixed(2) + 'Cr';
+    }
+
+    if (Math.abs(n) >= 1e5) {
+      return '₹' + (n / 1e5).toFixed(2) + 'L';
+    }
+
+    if (Math.abs(n) >= 1e3) {
+      return '₹' + (n / 1e3).toFixed(1) + 'K';
+    }
+
     return fmt(n);
   }
-  function today() { return new Date().toISOString().split('T')[0]; }
+
+  function today() {
+    return new Date().toISOString().split('T')[0];
+  }
+
+  function escHtml(str = '') {
+
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  // ───────────────── STARTUP ─────────────────
 
   document.addEventListener('DOMContentLoaded', () => {
-    if (typeof requireAuth === 'function') requireAuth();
+
+    if (typeof requireAuth === 'function') {
+      requireAuth();
+    }
+
     document.getElementById('g-start').value = today();
-    document.getElementById('c-date').value  = today();
+
+    document.getElementById('c-date').value = today();
+
     loadAll();
   });
 
-  // ── LOAD ──────────────────────────────────────────────────────────
+  // ───────────────── API ERROR HANDLER ─────────────────
+
+  async function handleApiError(res) {
+
+    if (res.status === 401 || res.status === 403) {
+
+      toast('Session expired. Please login again.', true);
+
+      localStorage.removeItem('token');
+
+      window.location.href = '../login.html';
+
+      return;
+    }
+
+    const msg = await res.text();
+
+    throw new Error(msg || 'Request failed');
+  }
+
+  // ───────────────── LOAD ─────────────────
+
   async function loadAll() {
+
     try {
+
       const [goalsRes, summaryRes] = await Promise.all([
         apiRequest(API),
         apiRequest(API + '/summary')
       ]);
+
+      if (!goalsRes.ok) {
+        await handleApiError(goalsRes);
+        return;
+      }
+
+      if (!summaryRes.ok) {
+        await handleApiError(summaryRes);
+        return;
+      }
+
       allGoals = await goalsRes.json();
+
       const summary = await summaryRes.json();
+
       renderSummary(summary);
+
       renderGoals(allGoals);
-    } catch(e) { toast('Failed to load goals', true); }
+
+    } catch (e) {
+
+      console.error(e);
+
+      toast(e.message || 'Failed to load goals', true);
+    }
   }
 
-  function renderSummary(s) {
-    document.getElementById('s-total').textContent     = s.totalGoals;
-    document.getElementById('s-active').textContent    = s.activeGoals;
-    document.getElementById('s-completed').textContent = s.completedGoals;
-    document.getElementById('s-saved').textContent     = fmtShort(s.totalSavedAmount);
-    document.getElementById('s-remaining').textContent = fmtShort(s.totalRemainingAmount);
-    const pct = Math.min(100, Math.round(s.overallProgress));
-    document.getElementById('overallPct').textContent = pct + '%';
-    document.getElementById('overallBar').style.width = pct + '%';
+  // ───────────────── SUMMARY ─────────────────
+
+  function renderSummary(s = {}) {
+
+    document.getElementById('s-total').textContent =
+      s.totalGoals ?? 0;
+
+    document.getElementById('s-active').textContent =
+      s.activeGoals ?? 0;
+
+    document.getElementById('s-completed').textContent =
+      s.completedGoals ?? 0;
+
+    document.getElementById('s-saved').textContent =
+      fmtShort(s.totalSavedAmount ?? 0);
+
+    document.getElementById('s-remaining').textContent =
+      fmtShort(s.totalRemainingAmount ?? 0);
+
+    const pct = Math.min(
+      100,
+      Math.round(s.overallProgress ?? 0)
+    );
+
+    document.getElementById('overallPct').textContent =
+      pct + '%';
+
+    document.getElementById('overallBar').style.width =
+      pct + '%';
   }
+
+  // ───────────────── FILTER ─────────────────
 
   function filterGoals(status, el) {
-    document.querySelectorAll('.filter-nav-btn').forEach(b => b.classList.remove('active'));
+
+    document.querySelectorAll('.filter-nav-btn')
+      .forEach(btn => btn.classList.remove('active'));
+
     el.classList.add('active');
-    const filtered = status === 'ALL' ? allGoals : allGoals.filter(g => g.status === status);
+
+    const filtered =
+      status === 'ALL'
+        ? allGoals
+        : allGoals.filter(g => g.status === status);
+
     renderGoals(filtered);
   }
 
+  // ───────────────── RENDER GOALS ─────────────────
+
   function renderGoals(goals) {
+
     const grid = document.getElementById('goalsGrid');
+
+    const statusOrder = {
+      ACTIVE: 0,
+      PAUSED: 1,
+      ABANDONED: 2,
+      COMPLETED: 3
+    };
+
+    goals = [...goals].sort((a, b) =>
+      (statusOrder[a.status] ?? 0) - (statusOrder[b.status] ?? 0) ||
+      new Date(a.targetDate) - new Date(b.targetDate)
+    );
+
     if (!goals.length) {
-      grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1">
-        <i class="fas fa-bullseye"></i>
-        <p>No goals here — try a different filter or create a new goal.</p>
-      </div>`;
+
+      grid.innerHTML = `
+        <div class="empty-state" style="grid-column:1/-1">
+          <i class="fas fa-bullseye"></i>
+          <p>No goals found.</p>
+        </div>
+      `;
+
       return;
     }
-    grid.innerHTML = goals.map(g => goalCardHTML(g)).join('');
-    // Animate SVG circles
+
+    grid.innerHTML =
+      goals.map(g => goalCardHTML(g)).join('');
+
     goals.forEach(g => {
-      const fg = document.getElementById('fg-' + g.id);
+
+      const fg =
+        document.getElementById('fg-' + g.id);
+
       if (!fg) return;
-      const r = 26, circ = 2 * Math.PI * r;
-      const pct = Math.min(100, g.progressPercentage);
-      fg.style.strokeDasharray  = circ;
+
+      const r = 26;
+
+      const circ = 2 * Math.PI * r;
+
+      const pct =
+        Math.min(100, g.progressPercentage);
+
+      fg.style.strokeDasharray = circ;
+
       fg.style.strokeDashoffset = circ;
-      setTimeout(() => { fg.style.strokeDashoffset = circ - (pct / 100) * circ; }, 80);
-      if (pct >= 100) fg.classList.add('completed');
+
+      setTimeout(() => {
+
+        fg.style.strokeDashoffset =
+          circ - (pct / 100) * circ;
+
+      }, 80);
+
+      if (pct >= 100) {
+        fg.classList.add('completed');
+      }
     });
   }
 
+  // ───────────────── GOAL CARD ─────────────────
+
   function goalCardHTML(g) {
-    const pct = Math.min(100, Math.round(g.progressPercentage));
-    const r = 26, circ = 2 * Math.PI * r;
-    const milestones = [25, 50, 75, 100];
+
+    const pct =
+      Math.min(100, Math.round(g.progressPercentage));
+
+    const r = 26;
+
+    const circ = 2 * Math.PI * r;
 
     return `
-    <div class="goal-card">
-      <div class="goal-card-top">
-        <div class="goal-icon"><i class="fas fa-bullseye"></i></div>
-        <div class="goal-meta">
-          <div class="goal-name" title="${g.name}">${g.name}</div>
-          <div class="goal-badges">
-            <span class="badge badge-category">${g.category.replace(/_/g,' ')}</span>
-            <span class="badge badge-${g.priority}">${g.priority}</span>
-            <span class="badge badge-${g.status}">${g.status}</span>
-          </div>
-        </div>
-      </div>
+      <div class="goal-card">
 
-      <div class="milestone-strip">
-        ${milestones.map(m => `
-        <div class="milestone">
-          <div class="milestone-dot ${pct >= m ? 'reached' : ''}"></div>
-          <div class="milestone-label">${m}%</div>
-        </div>`).join('')}
-      </div>
+        <div class="goal-card-top">
 
-      <div class="goal-progress-section">
-        <div class="circle-wrap">
-          <svg width="68" height="68" viewBox="0 0 68 68">
-            <circle class="circle-bg" cx="34" cy="34" r="${r}"/>
-            <circle class="circle-fg" id="fg-${g.id}" cx="34" cy="34" r="${r}"
-              stroke-dasharray="${circ}" stroke-dashoffset="${circ}"/>
-          </svg>
-          <div class="circle-pct">${pct}%</div>
-        </div>
-        <div class="goal-amounts">
-          <div class="amount-row">
-            <span class="amount-label">Saved</span>
-            <span class="amount-value green">${fmt(g.savedAmount)}</span>
+          <div class="goal-icon">
+            <i class="fas fa-bullseye"></i>
           </div>
-          <div class="amount-row">
-            <span class="amount-label">Target</span>
-            <span class="amount-value">${fmt(g.targetAmount)}</span>
-          </div>
-          <div class="amount-row">
-            <span class="amount-label">Remaining</span>
-            <span class="amount-value">${fmt(g.remainingAmount)}</span>
-          </div>
-        </div>
-      </div>
 
-      <div class="goal-info-strip">
-        <div class="info-item">
-          <div class="info-label">Monthly</div>
-          <div class="info-val">${fmt(g.monthlyContribution)}</div>
-        </div>
-        <div class="info-item">
-          <div class="info-label">Target Date</div>
-          <div class="info-val">${g.targetDate}</div>
-        </div>
-        <div class="info-item">
-          <div class="info-label">Projected</div>
-          <div class="info-val ${g.onTrack ? 'on-track' : 'off-track'}">
-            ${g.projectedCompletionDate || '—'} ${g.onTrack ? '▲' : '⚠'}
+          <div class="goal-meta">
+
+            <div class="goal-name">
+              ${escHtml(g.name)}
+            </div>
+
+            <div class="goal-badges">
+
+              <span class="badge badge-category">
+                ${g.category.replace(/_/g, ' ')}
+              </span>
+
+              <span class="badge badge-${g.priority}">
+                ${g.priority}
+              </span>
+
+              <span class="badge badge-${g.status}">
+                ${g.status}
+              </span>
+
+            </div>
           </div>
         </div>
-        ${g.linkedAccount ? `<div class="info-item"><div class="info-label">Account</div><div class="info-val">${g.linkedAccount}</div></div>` : ''}
-      </div>
 
-      <div class="goal-card-actions">
-        ${g.status === 'ACTIVE' ? `<button class="btn btn-ghost btn-sm" onclick="changeStatus(${g.id},'PAUSED')"><i class="fas fa-pause"></i> Pause</button>` : ''}
-        ${g.status === 'PAUSED' ? `<button class="btn btn-ghost btn-sm" onclick="changeStatus(${g.id},'ACTIVE')"><i class="fas fa-play"></i> Resume</button>` : ''}
-        ${g.status !== 'COMPLETED' && g.status !== 'ABANDONED'
-            ? `<button class="btn btn-ghost btn-sm" onclick="openContributeModal(${g.id},'${escHtml(g.name)}')"><i class="fas fa-plus"></i> Contribute</button>`
+        <div class="goal-progress-section">
+
+          <div class="circle-wrap">
+
+            <svg width="68" height="68" viewBox="0 0 68 68">
+
+              <circle
+                class="circle-bg"
+                cx="34"
+                cy="34"
+                r="${r}"
+              />
+
+              <circle
+                class="circle-fg"
+                id="fg-${g.id}"
+                cx="34"
+                cy="34"
+                r="${r}"
+                stroke-dasharray="${circ}"
+                stroke-dashoffset="${circ}"
+              />
+
+            </svg>
+
+            <div class="circle-pct">
+              ${pct}%
+            </div>
+
+          </div>
+
+          <div class="goal-amounts">
+
+            <div class="amount-row">
+              <span>Saved</span>
+              <span class="green">
+                ${fmt(g.savedAmount)}
+              </span>
+            </div>
+
+            <div class="amount-row">
+              <span>Target</span>
+              <span>
+                ${fmt(g.targetAmount)}
+              </span>
+            </div>
+
+            <div class="amount-row">
+              <span>Remaining</span>
+              <span>
+                ${fmt(g.remainingAmount)}
+              </span>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="goal-info-strip">
+
+          <div class="info-item">
+            <div class="info-label">Monthly</div>
+            <div class="info-val">
+              ${fmt(g.monthlyContribution)}
+            </div>
+          </div>
+
+          <div class="info-item">
+            <div class="info-label">Target</div>
+            <div class="info-val">
+              ${g.targetDate}
+            </div>
+          </div>
+
+        </div>
+
+        <div class="goal-card-actions">
+
+          ${g.status === 'ACTIVE'
+            ? `
+              <button
+                class="btn btn-ghost btn-sm"
+                onclick="changeStatus(${g.id}, 'PAUSED')">
+
+                <i class="fas fa-pause"></i>
+                Pause
+
+              </button>
+            `
             : ''}
-        <div class="row-actions">
-          <button class="icon-btn edit" onclick="openEditModal(${g.id})" title="Edit"><i class="fas fa-pen"></i></button>
-          <button class="icon-btn del"  onclick="deleteGoal(${g.id})"   title="Delete"><i class="fas fa-trash"></i></button>
+
+          ${g.status === 'PAUSED'
+            ? `
+              <button
+                class="btn btn-ghost btn-sm"
+                onclick="changeStatus(${g.id}, 'ACTIVE')">
+
+                <i class="fas fa-play"></i>
+                Resume
+
+              </button>
+            `
+            : ''}
+
+          ${g.status !== 'COMPLETED'
+            ? `
+              <button
+                class="btn btn-ghost btn-sm"
+                onclick="openContributeModal(${g.id}, '${escHtml(g.name)}')">
+
+                <i class="fas fa-plus"></i>
+                Contribute
+
+              </button>
+            `
+            : ''}
+
+          <div class="row-actions">
+
+            <button
+              class="icon-btn edit"
+              onclick="openEditModal(${g.id})">
+
+              <i class="fas fa-pen"></i>
+
+            </button>
+
+            <button
+              class="icon-btn del"
+              onclick="deleteGoal(${g.id})">
+
+              <i class="fas fa-trash"></i>
+
+            </button>
+
+          </div>
         </div>
       </div>
-    </div>`;
+    `;
   }
 
-  function escHtml(s) { return s.replace(/'/g, "\\'"); }
+  // ───────────────── OPEN NEW GOAL MODAL ─────────────────
 
-  // ── GOAL MODAL ────────────────────────────────────────────────────
   function openGoalModal() {
+
     editingId = null;
-    document.getElementById('goalModalTitle').textContent = 'New Goal';
-    ['g-name','g-desc','g-account'].forEach(id => document.getElementById(id).value = '');
-    document.getElementById('g-category').value   = '';
-    document.getElementById('g-priority').value   = 'MEDIUM';
-    document.getElementById('g-target').value     = '';
-    document.getElementById('g-monthly').value    = '';
-    document.getElementById('g-start').value      = today();
-    document.getElementById('g-targetDate').value = '';
+
+    document.getElementById('goalModalTitle')
+      .textContent = 'New Goal';
+
+    ['g-name', 'g-desc']
+  .forEach(id => {
+    document.getElementById(id).value = '';
+  });
+
+    document.getElementById('g-category').value = '';
+
+    document.getElementById('g-priority').value =
+      'MEDIUM';
+
+    document.getElementById('g-target').value = '';
+
+    document.getElementById('g-monthly').value = '';
+
+    document.getElementById('g-start').value =
+      today();
+
+    document.getElementById('g-targetDate').value =
+      '';
+
     document.getElementById('projectionHint').style.display = 'none';
+
     setError('goalError', null);
-    document.getElementById('goalModal').classList.add('open');
+
+    document.getElementById('goalModal')
+      .classList.add('open');
   }
 
-  function openEditModal(id) {
-    const g = allGoals.find(x => x.id === id);
-    if (!g) return;
-    editingId = id;
-    document.getElementById('goalModalTitle').textContent = 'Edit Goal';
-    document.getElementById('g-name').value       = g.name;
-    document.getElementById('g-desc').value       = g.description || '';
-    document.getElementById('g-category').value   = g.category;
-    document.getElementById('g-priority').value   = g.priority;
-    document.getElementById('g-target').value     = g.targetAmount;
-    document.getElementById('g-monthly').value    = g.monthlyContribution;
-    document.getElementById('g-start').value      = g.startDate;
-    document.getElementById('g-targetDate').value = g.targetDate;
-    document.getElementById('g-account').value    = g.linkedAccount || '';
-    setError('goalError', null);
-    document.getElementById('goalModal').classList.add('open');
-    calcProjection();
+  // ───────────────── OPEN EDIT MODAL ─────────────────
+
+  async function openEditModal(id) {
+
+    try {
+
+      const res = await apiRequest(`${API}/${id}`);
+
+      if (!res.ok) {
+        await handleApiError(res);
+        return;
+      }
+
+      const g = await res.json();
+
+      editingId = g.id;
+
+      document.getElementById('goalModalTitle')
+        .textContent = 'Edit Goal';
+
+      document.getElementById('g-name').value =
+        g.name || '';
+
+      document.getElementById('g-desc').value =
+        g.description || '';
+
+      document.getElementById('g-category').value =
+        g.category || '';
+
+      document.getElementById('g-priority').value =
+        g.priority || 'MEDIUM';
+
+      document.getElementById('g-target').value =
+        g.targetAmount || '';
+
+      document.getElementById('g-monthly').value =
+        g.monthlyContribution || '';
+
+      document.getElementById('g-start').value =
+        g.startDate || today();
+
+      document.getElementById('g-targetDate').value =
+        g.targetDate || '';
+
+      setError('goalError', null);
+
+      calcProjection();
+
+      document.getElementById('goalModal')
+        .classList.add('open');
+
+    } catch (e) {
+
+      console.error(e);
+
+      toast(e.message || 'Failed to load goal', true);
+    }
   }
+
+  // ───────────────── PROJECTION HINT ─────────────────
 
   function calcProjection() {
-    const monthly      = parseFloat(document.getElementById('g-monthly').value);
-    const target       = parseFloat(document.getElementById('g-target').value);
-    const targetDateVal = document.getElementById('g-targetDate').value;
-    const hint = document.getElementById('projectionHint');
-    if (!monthly || !target) { hint.style.display = 'none'; return; }
-    const monthsNeeded = Math.ceil(target / monthly);
-    const projDate = new Date();
-    projDate.setMonth(projDate.getMonth() + monthsNeeded);
-    const projStr = projDate.toISOString().split('T')[0];
-    let msg = `At ₹${monthly.toLocaleString('en-IN')}/month — target in ~${monthsNeeded} months (by ${projStr}).`;
-    if (targetDateVal) {
-      msg += new Date(projStr) <= new Date(targetDateVal)
-              ? ' On track!'
-              : ' Consider increasing your monthly contribution.';
+
+    const target =
+      parseFloat(document.getElementById('g-target').value) || 0;
+
+    const monthly =
+      parseFloat(document.getElementById('g-monthly').value) || 0;
+
+    const targetDate =
+      document.getElementById('g-targetDate').value;
+
+    const hint =
+      document.getElementById('projectionHint');
+
+    const text =
+      document.getElementById('projectionText');
+
+    if (target > 0 && monthly > 0) {
+
+      const monthsNeeded = Math.ceil(target / monthly);
+
+      const projDate = new Date();
+      projDate.setMonth(projDate.getMonth() + monthsNeeded);
+
+      const projStr = projDate.toLocaleDateString('en-IN', {
+        year: 'numeric',
+        month: 'short'
+      });
+
+      let msg =
+        `At ₹${monthly.toLocaleString('en-IN')}/mo you'll reach ` +
+        `₹${target.toLocaleString('en-IN')} in ~${monthsNeeded} month` +
+        `${monthsNeeded !== 1 ? 's' : ''} (by ${projStr}).`;
+
+      if (targetDate) {
+
+        const tDate = new Date(targetDate);
+        const today = new Date();
+        const monthsAvailable =
+          (tDate.getFullYear() - today.getFullYear()) * 12 +
+          (tDate.getMonth() - today.getMonth());
+
+        if (monthsNeeded <= monthsAvailable) {
+          msg += ' ✅ On track!';
+        } else {
+          const shortfall = monthsNeeded - monthsAvailable;
+          msg += ` ⚠️ ${shortfall} month${shortfall !== 1 ? 's' : ''} behind target date.`;
+        }
+      }
+
+      text.textContent = msg;
+      hint.style.display = 'block';
+
+    } else {
+
+      hint.style.display = 'none';
     }
-    document.getElementById('projectionText').textContent = msg;
-    hint.style.display = 'block';
   }
+
+  // ───────────────── SAVE GOAL ─────────────────
 
   async function saveGoal() {
-    const name                = document.getElementById('g-name').value.trim();
-    const category            = document.getElementById('g-category').value;
-    const priority            = document.getElementById('g-priority').value;
-    const targetAmount        = document.getElementById('g-target').value;
-    const monthlyContribution = document.getElementById('g-monthly').value;
-    const startDate           = document.getElementById('g-start').value;
-    const targetDate          = document.getElementById('g-targetDate').value;
 
-    if (!name || !category || !targetAmount || !monthlyContribution || !targetDate)
-      return setError('goalError', 'Please fill all required fields.');
+    const name =
+      document.getElementById('g-name').value.trim();
+
+    const category =
+      document.getElementById('g-category').value;
+
+    const priority =
+      document.getElementById('g-priority').value;
+
+    const targetAmount =
+      document.getElementById('g-target').value;
+
+    const monthlyContribution =
+      document.getElementById('g-monthly').value;
+
+    const startDate =
+      document.getElementById('g-start').value;
+
+    const targetDate =
+      document.getElementById('g-targetDate').value;
+
+    // ───── VALIDATION ─────
+
+    if (!name) {
+      return setError(
+        'goalError',
+        'Goal name required'
+      );
+    }
+
+    if (!category) {
+      return setError(
+        'goalError',
+        'Select category'
+      );
+    }
+
+    if (Number(targetAmount) <= 0) {
+      return setError(
+        'goalError',
+        'Target amount must be positive'
+      );
+    }
+
+    if (Number(monthlyContribution) <= 0) {
+      return setError(
+        'goalError',
+        'Monthly contribution must be positive'
+      );
+    }
+
+    if (!targetDate) {
+      return setError(
+        'goalError',
+        'Target date required'
+      );
+    }
 
     const body = {
+
       name,
-      description:          document.getElementById('g-desc').value,
+
+      description:
+        document.getElementById('g-desc').value,
+
       category,
+
       priority,
-      targetAmount:         parseFloat(targetAmount),
-      monthlyContribution:  parseFloat(monthlyContribution),
+
+      targetAmount:
+        parseFloat(targetAmount),
+
+      monthlyContribution:
+        parseFloat(monthlyContribution),
+
       startDate,
+
       targetDate,
-      linkedAccount:        document.getElementById('g-account').value
     };
 
+    const btn =
+      document.getElementById('saveGoalBtn');
+
     try {
-      const url    = editingId ? `${API}/${editingId}` : API;
-      const method = editingId ? 'PUT' : 'POST';
-      const res    = await apiRequest(url, {
+
+      btn.disabled = true;
+
+      btn.innerHTML = 'Saving...';
+
+      const url =
+        editingId
+          ? `${API}/${editingId}`
+          : API;
+
+      const method =
+        editingId ? 'PUT' : 'POST';
+
+      const res = await apiRequest(url, {
+
         method,
-        headers: { 'Content-Type': 'application/json' },
+
+        headers: {
+          'Content-Type': 'application/json'
+        },
+
         body: JSON.stringify(body)
       });
-      if (!res.ok) throw new Error();
+
+      if (!res.ok) {
+        await handleApiError(res);
+        return;
+      }
+
       closeModal('goalModal');
-      toast(editingId ? 'Goal updated!' : 'Goal created!');
+
+      toast(
+        editingId
+          ? 'Goal updated!'
+          : 'Goal created!'
+      );
+
       loadAll();
-    } catch(e) { setError('goalError', 'Failed to save goal. Please try again.'); }
+
+    } catch (e) {
+
+      console.error(e);
+
+      setError(
+        'goalError',
+        e.message || 'Failed to save goal'
+      );
+
+    } finally {
+
+      btn.disabled = false;
+
+      btn.innerHTML = '<i class="fas fa-check"></i> Save Goal';
+    }
   }
+
+  // ───────────────── DELETE GOAL ─────────────────
 
   async function deleteGoal(id) {
-    if (!confirm('Delete this goal and all its contributions?')) return;
+
+    if (!confirm(
+      'Delete this goal and contributions?'
+    )) {
+      return;
+    }
+
     try {
-      await apiRequest(`${API}/${id}`, { method: 'DELETE' });
+
+      const res = await apiRequest(
+        `${API}/${id}`,
+        { method: 'DELETE' }
+      );
+
+      if (!res.ok) {
+        await handleApiError(res);
+        return;
+      }
+
       toast('Goal deleted');
+
       loadAll();
-    } catch(e) { toast('Failed to delete', true); }
+
+    } catch (e) {
+
+      console.error(e);
+
+      toast(e.message, true);
+    }
   }
+
+  // ───────────────── STATUS ─────────────────
 
   async function changeStatus(id, status) {
+
     try {
-      await apiRequest(`${API}/${id}/status?status=${status}`, { method: 'PATCH' });
+
+      const res = await apiRequest(
+        `${API}/${id}/status?status=${status}`,
+        { method: 'PATCH' }
+      );
+
+      if (!res.ok) {
+        await handleApiError(res);
+        return;
+      }
+
       toast('Status updated');
+
       loadAll();
-    } catch(e) { toast('Failed to update status', true); }
+
+    } catch (e) {
+
+      console.error(e);
+
+      toast(e.message, true);
+    }
   }
 
-  // ── CONTRIBUTE MODAL ──────────────────────────────────────────────
+  // ───────────────── CONTRIBUTIONS ─────────────────
+
   async function openContributeModal(goalId, goalName) {
+
     activeContributeGoalId = goalId;
-    document.getElementById('contributeGoalName').textContent = goalName;
+
+    document.getElementById('contributeGoalName')
+      .textContent = goalName;
+
     document.getElementById('c-amount').value = '';
-    document.getElementById('c-date').value   = today();
-    document.getElementById('c-note').value   = '';
+
+    document.getElementById('c-date').value =
+      today();
+
+    document.getElementById('c-note').value = '';
+
     setError('contributeError', null);
-    document.getElementById('contributeModal').classList.add('open');
+
+    document.getElementById('contributeModal')
+      .classList.add('open');
+
     await loadContributions(goalId);
   }
 
   async function loadContributions(goalId) {
+
     try {
-      const res  = await apiRequest(`${API}/${goalId}/contributions`);
-      const list = await res.json();
-      const el   = document.getElementById('contributionsList');
-      if (!list.length) {
-        el.innerHTML = '<div style="font-size:0.82rem;color:var(--slate-400);text-align:center;padding:16px;">No contributions yet.</div>';
+
+      const res = await apiRequest(
+        `${API}/${goalId}/contributions`
+      );
+
+      if (!res.ok) {
+        await handleApiError(res);
         return;
       }
-      el.innerHTML = list.slice(0, 10).map(c => `
-        <div class="contribution-item">
-          <div>
-            <div class="contribution-amount">${fmt(c.amount)}</div>
-            <div class="contribution-meta">${c.contributionDate}${c.note ? ' · ' + c.note : ''}</div>
+
+      const list = await res.json();
+
+      const el =
+        document.getElementById(
+          'contributionsList'
+        );
+
+      if (!list.length) {
+
+        el.innerHTML = `
+          <div class="empty-state">
+            No contributions yet
           </div>
-          <button class="contribution-del" onclick="delContribution(${c.id})" title="Remove">
+        `;
+
+        return;
+      }
+
+      el.innerHTML = list.map(c => `
+        <div class="contribution-item">
+
+          <div>
+
+            <div class="contribution-amount">
+              ${fmt(c.amount)}
+            </div>
+
+            <div class="contribution-meta">
+              ${c.contributionDate}
+              ${c.note ? ' · ' + escHtml(c.note) : ''}
+            </div>
+
+          </div>
+
+          <button
+            class="contribution-del"
+            onclick="delContribution(${c.id})">
+
             <i class="fas fa-times"></i>
+
           </button>
-        </div>`).join('');
-    } catch(e) {}
+
+        </div>
+      `).join('');
+
+    } catch (e) {
+
+      console.error(e);
+    }
   }
 
   async function submitContribution() {
-    const amount = document.getElementById('c-amount').value;
-    const date   = document.getElementById('c-date').value;
-    if (!amount || !date) return setError('contributeError', 'Please enter amount and date.');
+
+    const amount =
+      document.getElementById('c-amount').value;
+
+    const date =
+      document.getElementById('c-date').value;
+
+    if (Number(amount) <= 0) {
+
+      return setError(
+        'contributeError',
+        'Amount must be positive'
+      );
+    }
+
     try {
-      const res = await apiRequest(`${API}/contributions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          goalId:           activeContributeGoalId,
-          amount:           parseFloat(amount),
-          contributionDate: date,
-          note:             document.getElementById('c-note').value
-        })
-      });
-      if (!res.ok) throw new Error();
+
+      const res = await apiRequest(
+        `${API}/contributions`,
+        {
+
+          method: 'POST',
+
+          headers: {
+            'Content-Type': 'application/json'
+          },
+
+          body: JSON.stringify({
+
+            goalId: activeContributeGoalId,
+
+            amount: parseFloat(amount),
+
+            contributionDate: date,
+
+            note:
+              document.getElementById('c-note').value
+          })
+        }
+      );
+
+      if (!res.ok) {
+        await handleApiError(res);
+        return;
+      }
+
+      toast('Contribution added');
+
       document.getElementById('c-amount').value = '';
-      document.getElementById('c-note').value   = '';
-      setError('contributeError', null);
-      toast('Contribution added!');
-      await loadContributions(activeContributeGoalId);
+
+      document.getElementById('c-note').value = '';
+
+      await loadContributions(
+        activeContributeGoalId
+      );
+
       loadAll();
-    } catch(e) { setError('contributeError', 'Failed to add contribution.'); }
+
+    } catch (e) {
+
+      console.error(e);
+
+      setError(
+        'contributeError',
+        e.message
+      );
+    }
   }
 
   async function delContribution(id) {
-    if (!confirm('Remove this contribution?')) return;
+
+    if (!confirm('Remove contribution?')) {
+      return;
+    }
+
     try {
-      await apiRequest(`${API}/contributions/${id}`, { method: 'DELETE' });
+
+      const res = await apiRequest(
+        `${API}/contributions/${id}`,
+        { method: 'DELETE' }
+      );
+
+      if (!res.ok) {
+        await handleApiError(res);
+        return;
+      }
+
       toast('Contribution removed');
-      await loadContributions(activeContributeGoalId);
+
+      await loadContributions(
+        activeContributeGoalId
+      );
+
       loadAll();
-    } catch(e) { toast('Failed to remove', true); }
+
+    } catch (e) {
+
+      console.error(e);
+
+      toast(e.message, true);
+    }
   }
 
-  // ── HELPERS ───────────────────────────────────────────────────────
-  function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+  // ───────────────── HELPERS ─────────────────
+
+  function closeModal(id) {
+
+    document.getElementById(id)
+      .classList.remove('open');
+  }
 
   function setError(id, msg) {
-    const el = document.getElementById(id);
+
+    const el =
+      document.getElementById(id);
+
     if (!el) return;
-    el.textContent   = msg || '';
-    el.style.display = msg ? 'block' : 'none';
+
+    el.textContent = msg || '';
+
+    el.style.display =
+      msg ? 'block' : 'none';
   }
 
   function toast(msg, isError = false) {
-    const el = document.createElement('div');
-    el.className  = 'toast' + (isError ? ' error' : '');
+
+    const el =
+      document.createElement('div');
+
+    el.className =
+      'toast' + (isError ? ' error' : '');
+
     el.textContent = msg;
-    document.getElementById('toastContainer').appendChild(el);
-    setTimeout(() => el.remove(), 3200);
+
+    document.getElementById('toastContainer')
+      .appendChild(el);
+
+    setTimeout(() => {
+      el.remove();
+    }, 3200);
   }
 
-  ['goalModal', 'contributeModal'].forEach(id => {
-    document.getElementById(id).addEventListener('click', function(e) {
-      if (e.target === this) closeModal(id);
+  // ───────────────── MODAL CLOSE ON BACKDROP ─────────────────
+
+  ['goalModal', 'contributeModal']
+    .forEach(id => {
+
+      document.getElementById(id)
+        .addEventListener('click', function (e) {
+
+          if (e.target === this) {
+            closeModal(id);
+          }
+        });
     });
-  });
+
 </script>
 </body>
 </html>

@@ -2,9 +2,9 @@ package com.rishanth.flux360.service;
 
 import com.rishanth.flux360.dto.StockHoldingDTO;
 import com.rishanth.flux360.dto.StockWatchlistDTO;
-import com.rishanth.flux360.model.StockHolding;
-import com.rishanth.flux360.model.StockWatchlist;
-import com.rishanth.flux360.model.User;
+import com.rishanth.flux360.entity.StockHolding;
+import com.rishanth.flux360.entity.StockWatchlist;
+import com.rishanth.flux360.entity.User;
 import com.rishanth.flux360.repository.StockHoldingRepository;
 import com.rishanth.flux360.repository.StockWatchlistRepository;
 import com.rishanth.flux360.repository.UserRepository;

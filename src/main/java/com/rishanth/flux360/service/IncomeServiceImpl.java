@@ -1,16 +1,18 @@
 package com.rishanth.flux360.service;
 
 import com.rishanth.flux360.dto.IncomeDTO;
-import com.rishanth.flux360.model.Income;
-import com.rishanth.flux360.model.IncomeCategory;
-import com.rishanth.flux360.model.User;
+import com.rishanth.flux360.exception.ResourceNotFoundException;
+import com.rishanth.flux360.entity.Income;
+import com.rishanth.flux360.entity.IncomeCategory;
+import com.rishanth.flux360.entity.User;
 import com.rishanth.flux360.repository.IncomeRepository;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -19,33 +21,19 @@ public class IncomeServiceImpl implements IncomeService {
     private final IncomeRepository incomeRepository;
 
     @Override
+    @Transactional
     public Income createIncome(IncomeDTO dto, User user) {
 
-        if (dto.getDate() == null) {
-            throw new IllegalArgumentException("Date is required");
-        }
-
-        if (dto.getAmount() == null) {
-            throw new IllegalArgumentException("Amount is required");
-        }
-
-        if (dto.getSource() == null || dto.getSource().isBlank()) {
-            throw new IllegalArgumentException("Source is required");
-        }
-
-        IncomeCategory category;
-        try {
-            category = IncomeCategory.valueOf(dto.getCategory().toUpperCase());
-        } catch (Exception e) {
-            throw new IllegalArgumentException("Invalid income category");
-        }
-
         Income income = Income.builder()
-                .amount(dto.getAmount())
-                .date(dto.getDate())
                 .source(dto.getSource())
+                .amount(dto.getAmount())
                 .description(dto.getDescription())
-                .category(category)
+                .date(dto.getDate())
+                .category(
+                        IncomeCategory.valueOf(
+                                dto.getCategory().toUpperCase()
+                        )
+                )
                 .user(user)
                 .build();
 
@@ -53,53 +41,65 @@ public class IncomeServiceImpl implements IncomeService {
     }
 
     @Override
+    public List<Income> findByUser(User user) {
+
+        return incomeRepository.findByUserOrderByDateDesc(user);
+    }
+
+    @Override
+    public Income findById(Long id, User user) {
+
+        return incomeRepository.findByIdAndUser(id, user)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("Income not found"));
+    }
+
+    @Override
+    @Transactional
     public Income updateIncome(Long id, IncomeDTO dto, User user) {
 
-        Income income = incomeRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Income not found"));
-
-        if (!income.getUser().getId().equals(user.getId())) {
-            throw new RuntimeException("Unauthorized access");
-        }
+        Income income = findById(id, user);
 
         income.setSource(dto.getSource());
         income.setAmount(dto.getAmount());
         income.setDate(dto.getDate());
         income.setDescription(dto.getDescription());
 
-        if (dto.getCategory() != null) {
-            try {
-                income.setCategory(
-                        IncomeCategory.valueOf(dto.getCategory().toUpperCase())
-                );
-            } catch (Exception e) {
-                throw new IllegalArgumentException("Invalid income category");
-            }
-        }
+        income.setCategory(
+                IncomeCategory.valueOf(
+                        dto.getCategory().toUpperCase()
+                )
+        );
 
         return incomeRepository.save(income);
     }
 
     @Override
-    public List<Income> findByUser(User user) {
-        return incomeRepository.findByUserOrderByDateDesc(user);
+    @Transactional
+    public void deleteIncome(Long id, User user) {
+
+        Income income = findById(id, user);
+
+        incomeRepository.delete(income);
     }
 
     @Override
-    public Optional<Income> findById(Long id) {
-        return incomeRepository.findById(id);
-    }
+    public List<Income> findByUserAndDateRange(
+            User user,
+            LocalDate start,
+            LocalDate end
+    ) {
 
-    @Override
-    public void deleteById(Long id) {
-        incomeRepository.deleteById(id);
-    }
-
-    @Override
-    public List<Income> findByUserAndDateRange(User user,
-                                               LocalDate start,
-                                               LocalDate end) {
         return incomeRepository
-                .findByUserAndDateBetweenOrderByDateDesc(user, start, end);
+                .findByUserAndDateBetweenOrderByDateDesc(
+                        user,
+                        start,
+                        end
+                );
+    }
+
+    @Override
+    public BigDecimal getTotalIncome(Long userId) {
+        return incomeRepository.getTotalIncome(userId);
     }
 }

@@ -1,63 +1,30 @@
 package com.rishanth.flux360.service;
 
-import com.rishanth.flux360.model.Expense;
-import com.rishanth.flux360.model.User;
-import com.rishanth.flux360.repository.ExpenseRepository;
-import org.springframework.stereotype.Service;
+import com.rishanth.flux360.dto.ExpenseDTO;
+import com.rishanth.flux360.entity.Expense;
+import com.rishanth.flux360.entity.User;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
-@Service
-public class ExpenseService {
+public interface ExpenseService {
 
-    private final ExpenseRepository repo;
+    Expense saveExpense(ExpenseDTO dto, User user);
 
-    public ExpenseService(ExpenseRepository repo) {
-        this.repo = repo;
-    }
+    List<Expense> getExpensesByUser(User user);
 
-    // SAVE
-    public Expense saveExpense(Expense expense) {
-        return repo.save(expense);
-    }
+    BigDecimal getTotalExpense(Long userId);
 
-    // GET USER EXPENSES
-    public List<Expense> getExpensesByUser(User user) {
-        return repo.findByUserOrderByExpenseDateDesc(user);
-    }
+    Expense updateExpense(Long id, ExpenseDTO dto, User user);
 
-    // TOTAL EXPENSE
-    public BigDecimal getTotalExpense(Long userId) {
-        return repo.getTotalExpense(userId);
-    }
+    void deleteExpense(Long id, User user);
 
-    // UPDATE
-    public Expense updateExpense(Long id, Expense updatedExpense) {
+    Expense findById(Long id, User user);
 
-        Expense existing = repo.findById(id)
-                .orElseThrow(() -> new RuntimeException("Expense not found"));
-
-        existing.setCategory(updatedExpense.getCategory());
-        existing.setAmount(updatedExpense.getAmount());
-        existing.setExpenseDate(updatedExpense.getExpenseDate());
-        existing.setDescription(updatedExpense.getDescription());
-
-        return repo.save(existing);
-    }
-
-    // DELETE
-    public void deleteExpense(Long id) {
-        repo.deleteById(id);
-    }
-
-    // FILTER BY DATE RANGE
-    public List<Expense> getByDateRange(User user,
-                                        LocalDate start,
-                                        LocalDate end) {
-
-        return repo.findByUserAndExpenseDateBetweenOrderByExpenseDateDesc(
-                user, start, end);
-    }
+    List<Expense> getByDateRange(
+            User user,
+            LocalDate start,
+            LocalDate end
+    );
 }

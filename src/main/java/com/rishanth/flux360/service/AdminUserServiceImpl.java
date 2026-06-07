@@ -2,9 +2,9 @@ package com.rishanth.flux360.service;
 
 import com.rishanth.flux360.dto.UserDTO;
 import com.rishanth.flux360.dto.UserStatsDTO;
-import com.rishanth.flux360.model.Role;
-import com.rishanth.flux360.model.User;
-import com.rishanth.flux360.model.UserStatus;
+import com.rishanth.flux360.entity.Role;
+import com.rishanth.flux360.entity.User;
+import com.rishanth.flux360.entity.UserStatus;
 import com.rishanth.flux360.repository.UserRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityNotFoundException;

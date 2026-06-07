@@ -1,20 +1,19 @@
 package com.rishanth.flux360.controller;
 
 import com.rishanth.flux360.dto.IncomeDTO;
-import com.rishanth.flux360.model.Income;
-import com.rishanth.flux360.model.User;
+import com.rishanth.flux360.mapper.IncomeMapper;
+import com.rishanth.flux360.entity.User;
 import com.rishanth.flux360.service.IncomeService;
 import com.rishanth.flux360.service.UserService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.*;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.util.List;
-import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/incomes")
@@ -25,97 +24,66 @@ public class IncomeController {
     private final IncomeService incomeService;
     private final UserService userService;
 
-    // CREATE
     @PostMapping
-    public ResponseEntity<?> createIncome(
-            @RequestBody IncomeDTO dto,
+    public ResponseEntity<IncomeDTO> createIncome(
+            @Valid @RequestBody IncomeDTO dto,
             Authentication authentication
     ) {
-        try {
-            String username = authentication.getName();
-            User user = userService.findByEmail(username);
 
-            Income saved = incomeService.createIncome(dto, user);
-            dto.setId(saved.getId());
+        User user = getCurrentUser(authentication);
 
-            return ResponseEntity.status(HttpStatus.CREATED).body(dto);
-
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity
-                    .badRequest()
-                    .body(e.getMessage());
-        } catch (Exception e) {
-            e.printStackTrace();
-            return ResponseEntity
-                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Failed to add income");
-        }
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(
+                        IncomeMapper.toDTO(
+                                incomeService.createIncome(dto, user)
+                        )
+                );
     }
 
-    // READ
     @GetMapping
-    public ResponseEntity<List<IncomeDTO>> getIncomes(Authentication authentication) {
-        String username = authentication.getName();
-        User user = userService.findByEmail(username);
+    public ResponseEntity<List<IncomeDTO>> getIncomes(
+            Authentication authentication
+    ) {
 
-        List<IncomeDTO> out = incomeService.findByUser(user)
+        User user = getCurrentUser(authentication);
+
+        List<IncomeDTO> incomes = incomeService
+                .findByUser(user)
                 .stream()
-                .map(i -> {
-                    IncomeDTO d = new IncomeDTO();
-                    d.setId(i.getId());
-                    d.setSource(i.getSource());
-                    d.setAmount(i.getAmount());
-                    d.setDate(i.getDate());
-                    d.setCategory(i.getCategory().name());
-                    d.setDescription(i.getDescription());
-                    return d;
-                })
-                .collect(Collectors.toList());
+                .map(IncomeMapper::toDTO)
+                .toList();
 
-        return ResponseEntity.ok(out);
+        return ResponseEntity.ok(incomes);
     }
 
-    // UPDATE
     @PutMapping("/{id}")
-    public ResponseEntity<?> updateIncome(
+    public ResponseEntity<IncomeDTO> updateIncome(
             @PathVariable Long id,
-            @RequestBody IncomeDTO dto,
+            @Valid @RequestBody IncomeDTO dto,
             Authentication authentication
     ) {
-        try {
-            String username = authentication.getName();
-            User user = userService.findByEmail(username);
 
-            Income updated = incomeService.updateIncome(id, dto, user);
-            dto.setId(updated.getId());
+        User user = getCurrentUser(authentication);
 
-            return ResponseEntity.ok(dto);
-
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(e.getMessage());
-        }
+        return ResponseEntity.ok(
+                IncomeMapper.toDTO(
+                        incomeService.updateIncome(id, dto, user)
+                )
+        );
     }
 
-    // DELETE
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> deleteIncome(
+    public ResponseEntity<Void> deleteIncome(
             @PathVariable Long id,
             Authentication authentication
     ) {
-        String username = authentication.getName();
-        User user = userService.findByEmail(username);
 
-        return incomeService.findById(id)
-                .map(inc -> {
-                    if (!inc.getUser().getId().equals(user.getId())) {
-                        return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-                    }
-                    incomeService.deleteById(id);
-                    return ResponseEntity.noContent().build();
-                })
-                .orElseGet(() -> ResponseEntity.notFound().build());
+        User user = getCurrentUser(authentication);
+
+        incomeService.deleteIncome(id, user);
+
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/filter")
@@ -124,27 +92,27 @@ public class IncomeController {
             @RequestParam int month,
             Authentication authentication
     ) {
-        String username = authentication.getName();
-        User user = userService.findByEmail(username);
+
+        if (month < 1 || month > 12) {
+            throw new IllegalArgumentException("Invalid month");
+        }
+
+        User user = getCurrentUser(authentication);
 
         LocalDate start = LocalDate.of(year, month, 1);
         LocalDate end = start.withDayOfMonth(start.lengthOfMonth());
 
-        List<IncomeDTO> out = incomeService
+        List<IncomeDTO> incomes = incomeService
                 .findByUserAndDateRange(user, start, end)
                 .stream()
-                .map(i -> {
-                    IncomeDTO d = new IncomeDTO();
-                    d.setId(i.getId());
-                    d.setSource(i.getSource());
-                    d.setAmount(i.getAmount());
-                    d.setDate(i.getDate());
-                    d.setCategory(i.getCategory().name());
-                    d.setDescription(i.getDescription());
-                    return d;
-                })
+                .map(IncomeMapper::toDTO)
                 .toList();
 
-        return ResponseEntity.ok(out);
+        return ResponseEntity.ok(incomes);
+    }
+
+    private User getCurrentUser(Authentication authentication) {
+
+        return userService.findByEmail(authentication.getName());
     }
 }

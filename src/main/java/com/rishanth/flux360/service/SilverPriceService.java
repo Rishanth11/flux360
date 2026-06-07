@@ -1,5 +1,6 @@
 package com.rishanth.flux360.service;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -29,6 +30,12 @@ import java.util.Map;
 public class SilverPriceService {
 
     private final ApiConfigService apiConfig;
+
+    @Value("${silver.api.url}")
+    private String silverApiUrl;
+
+    @Value("${silver.fallback.url}")
+    private String silverFallbackUrl;
 
     // ── Manual in-memory cache ────────────────────────────────────────────────
     private volatile BigDecimal cachedPrice = null;
@@ -81,7 +88,7 @@ public class SilverPriceService {
 
     private BigDecimal fetchFromGoldApiInr() {
         try {
-            String url    = apiConfig.get("SILVER_API_URL", "https://www.goldapi.io/api/XAG/INR");
+            String url = silverApiUrl;
             String apiKey = apiConfig.get("GOLD_API_KEY");   // same key covers XAG too
 
             if (apiKey.isBlank()) {
@@ -124,7 +131,7 @@ public class SilverPriceService {
 
     private BigDecimal fetchFallbackPrice() {
         try {
-            String url = apiConfig.get("SILVER_FALLBACK_URL", "https://api.gold-api.com/price/XAG");
+            String url = silverFallbackUrl;
             Map body   = restTemplate.getForObject(url, Map.class);
 
             if (body == null || !body.containsKey("price")) {

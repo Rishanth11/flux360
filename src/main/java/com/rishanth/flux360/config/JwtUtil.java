@@ -1,6 +1,6 @@
 package com.rishanth.flux360.config;
 
-import com.rishanth.flux360.model.User;
+import com.rishanth.flux360.entity.User;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.security.core.GrantedAuthority;

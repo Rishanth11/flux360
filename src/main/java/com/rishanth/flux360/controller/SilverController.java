@@ -1,82 +1,92 @@
 package com.rishanth.flux360.controller;
 
-import com.rishanth.flux360.dto.SilverPortfolioSummaryDTO;
-import com.rishanth.flux360.model.SilverInvestment;
-import com.rishanth.flux360.service.SilverInvestmentService;
+import com.rishanth.flux360.dto.SilverDTO;
+import com.rishanth.flux360.dto.SilverSummaryDTO;
+import com.rishanth.flux360.service.SilverService;
 import com.rishanth.flux360.service.SilverPriceService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.security.Principal;
-import java.time.LocalDate;
 
 @RestController
 @RequestMapping("/api/silver")
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('USER')")
 public class SilverController {
 
     private final SilverPriceService silverPriceService;
-    private final SilverInvestmentService silverInvestmentService;
+    private final SilverService service;
 
     @GetMapping("/price")
     public ResponseEntity<BigDecimal> getSilverPrice() {
-        BigDecimal price = silverPriceService.getLiveSilverPricePerGram();
-        return price != null ? ResponseEntity.ok(price) : ResponseEntity.status(503).build();
+
+        return ResponseEntity.ok(
+                silverPriceService.getLiveSilverPricePerGram()
+        );
     }
 
     @PostMapping("/invest")
-    public ResponseEntity<?> addInvestment(
-            @RequestParam BigDecimal grams,
-            @RequestParam BigDecimal pricePerGram,
-            @RequestParam(required = false) String purchaseDate,
-            Principal principal) {
-        try {
-            LocalDate date = (purchaseDate != null && !purchaseDate.isEmpty())
-                    ? LocalDate.parse(purchaseDate)
-                    : LocalDate.now();
-            SilverInvestment saved = silverInvestmentService.addInvestment(
-                    principal.getName(), grams, pricePerGram, date);
-            return ResponseEntity.ok(saved);
-        } catch (Exception e) {
-            return ResponseEntity.status(500).body("Failed to add investment: " + e.getMessage());
-        }
+    public ResponseEntity<SilverDTO> addInvestment(
+            @Valid @RequestBody SilverDTO dto,
+            Principal principal
+    ) {
+
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(
+                        service.addInvestment(
+                                principal.getName(),
+                                dto
+                        )
+                );
     }
 
     @GetMapping("/portfolio")
-    public ResponseEntity<?> getPortfolio(Principal principal) {
-        try {
-            SilverPortfolioSummaryDTO summary = silverInvestmentService
-                    .getPortfolioSummary(principal.getName());
-            return ResponseEntity.ok(summary);
-        } catch (Exception e) {
-            return ResponseEntity.status(500).body("Failed to load portfolio: " + e.getMessage());
-        }
+    public ResponseEntity<SilverSummaryDTO>
+    getPortfolio(
+            Principal principal
+    ) {
+
+        return ResponseEntity.ok(
+                service.getPortfolioSummary(
+                        principal.getName()
+                )
+        );
     }
 
     @DeleteMapping("/invest/{id}")
-    public ResponseEntity<?> deleteInvestment(@PathVariable Long id, Principal principal) {
-        try {
-            silverInvestmentService.deleteInvestment(id, principal.getName());
-            return ResponseEntity.noContent().build();
-        } catch (Exception e) {
-            return ResponseEntity.status(500).body("Failed to delete investment: " + e.getMessage());
-        }
+    public ResponseEntity<Void> deleteInvestment(
+            @PathVariable Long id,
+            Principal principal
+    ) {
+
+        service.deleteInvestment(
+                id,
+                principal.getName()
+        );
+
+        return ResponseEntity.noContent().build();
     }
 
     @PutMapping("/invest/{id}")
-    public ResponseEntity<?> updateInvestment(
+    public ResponseEntity<SilverDTO> updateInvestment(
             @PathVariable Long id,
-            @Valid @RequestBody SilverInvestment body,  // ✅ @Valid added
-            Principal principal) {
-        try {
-            SilverInvestment updated = silverInvestmentService.updateInvestment(
-                    id, body, principal.getName());
-            return ResponseEntity.ok(updated);
-        } catch (Exception e) {
-            return ResponseEntity.status(500).body("Failed to update investment: " + e.getMessage());
-        }
+            @Valid @RequestBody SilverDTO dto,
+            Principal principal
+    ) {
+
+        return ResponseEntity.ok(
+                service.updateInvestment(
+                        id,
+                        dto,
+                        principal.getName()
+                )
+        );
     }
 }

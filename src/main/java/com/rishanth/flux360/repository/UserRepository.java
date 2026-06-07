@@ -1,8 +1,8 @@
 package com.rishanth.flux360.repository;
 
-import com.rishanth.flux360.model.Role;
-import com.rishanth.flux360.model.User;
-import com.rishanth.flux360.model.UserStatus;
+import com.rishanth.flux360.entity.Role;
+import com.rishanth.flux360.entity.User;
+import com.rishanth.flux360.entity.UserStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.List;
 import java.util.Optional;

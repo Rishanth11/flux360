@@ -1,23 +1,27 @@
 package com.rishanth.flux360.repository;
 
-import com.rishanth.flux360.model.Income;
-import com.rishanth.flux360.model.User;
+import com.rishanth.flux360.entity.Income;
+import com.rishanth.flux360.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 public interface IncomeRepository extends JpaRepository<Income, Long> {
 
-    // 🔹 Get incomes by user ordered by date (latest first)
     List<Income> findByUserOrderByDateDesc(User user);
 
-    // 🔹 Get total income (used in FinancialHealthService)
-    @Query("SELECT COALESCE(SUM(i.amount), 0) FROM Income i WHERE i.user.id = :userId")
-    BigDecimal getTotalIncome(@Param("userId") Long userId);
+    Optional<Income> findByIdAndUser(Long id, User user);
+
+    @Query("""
+            SELECT COALESCE(SUM(i.amount), 0)
+            FROM Income i
+            WHERE i.user.id = :userId
+            """)
+    BigDecimal getTotalIncome(Long userId);
 
     List<Income> findByUserAndDateBetweenOrderByDateDesc(
             User user,

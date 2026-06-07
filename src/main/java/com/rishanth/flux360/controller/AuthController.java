@@ -3,7 +3,7 @@ package com.rishanth.flux360.controller;
 import com.rishanth.flux360.config.JwtUtil;
 import com.rishanth.flux360.dto.LoginDTO;
 import com.rishanth.flux360.dto.RegisterDTO;
-import com.rishanth.flux360.model.User;
+import com.rishanth.flux360.entity.User;
 import com.rishanth.flux360.service.UserService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;

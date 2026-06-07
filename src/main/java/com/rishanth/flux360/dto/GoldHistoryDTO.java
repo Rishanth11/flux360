@@ -5,6 +5,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 
 @Data
 @AllArgsConstructor
@@ -12,7 +13,7 @@ import java.math.BigDecimal;
 public class GoldHistoryDTO {
 
     private Long id;
-    private String purchaseDate;
+    private LocalDate purchaseDate;
     private BigDecimal gramsPurchased;
     private BigDecimal purchasePricePerGram;
     private BigDecimal totalInvested;

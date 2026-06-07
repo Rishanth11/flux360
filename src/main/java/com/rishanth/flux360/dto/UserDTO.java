@@ -1,8 +1,8 @@
 package com.rishanth.flux360.dto;
 
-import com.rishanth.flux360.model.Role;
-import com.rishanth.flux360.model.User;
-import com.rishanth.flux360.model.UserStatus;
+import com.rishanth.flux360.entity.Role;
+import com.rishanth.flux360.entity.User;
+import com.rishanth.flux360.entity.UserStatus;
 import java.time.LocalDateTime;
 
 public class UserDTO {

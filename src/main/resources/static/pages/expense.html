@@ -163,8 +163,21 @@
         <div class="form-grid">
             <div class="field"><label>Category *</label>
                 <select id="category">
-                    <option>FOOD</option><option>TRAVEL</option><option>SHOPPING</option>
-                    <option>EMI</option><option>ENTERTAINMENT</option><option>OTHER</option>
+                    <option value="FOOD">FOOD</option>
+                    <option value="TRAVEL">TRAVEL</option>
+                    <option value="SHOPPING">SHOPPING</option>
+                    <option value="RENT">RENT</option>
+                    <option value="ENTERTAINMENT">ENTERTAINMENT</option>
+                    <option value="HEALTHCARE">HEALTHCARE</option>
+                    <option value="EDUCATION">EDUCATION</option>
+                    <option value="UTILITIES">UTILITIES</option>
+                    <option value="INSURANCE">INSURANCE</option>
+                    <option value="INVESTMENT">INVESTMENT</option>
+                    <option value="EMI">EMI</option>
+                    <option value="SUBSCRIPTION">SUBSCRIPTION</option>
+                    <option value="FUEL">FUEL</option>
+                    <option value="GROCERIES">GROCERIES</option>
+                    <option value="OTHER">OTHER</option>
                 </select>
             </div>
             <div class="field"><label>Amount (₹) *</label><input id="amount" type="number" step="0.01" placeholder="0.00"></div>
@@ -212,6 +225,7 @@
 <script src="../js/guard.js"></script>
 <script src="../js/api.js"></script>
 <script>
+    requireUser();
     let editingExpenseId = null;
     let monthlyChart, categoryChart;
 

@@ -1,6 +1,7 @@
 package com.rishanth.flux360.controller;
 
-import com.rishanth.flux360.model.ApiConfigEntity;
+import com.rishanth.flux360.entity.ApiConfigEntity;
+import com.rishanth.flux360.exception.ResourceNotFoundException;
 import com.rishanth.flux360.service.ApiConfigService;
 import com.rishanth.flux360.service.GoldPriceService;
 import com.rishanth.flux360.service.SilverPriceService;
@@ -33,11 +34,13 @@ public class AdminApiConfigController {
     private final GoldPriceService goldPriceService;
     private final SilverPriceService silverPriceService;
 
-    public AdminApiConfigController(ApiConfigService configService,
-                                    GoldPriceService goldPriceService,
-                                    SilverPriceService silverPriceService) {
-        this.configService     = configService;
-        this.goldPriceService  = goldPriceService;
+    public AdminApiConfigController(
+            ApiConfigService configService,
+            GoldPriceService goldPriceService,
+            SilverPriceService silverPriceService
+    ) {
+        this.configService      = configService;
+        this.goldPriceService   = goldPriceService;
         this.silverPriceService = silverPriceService;
     }
 
@@ -45,6 +48,7 @@ public class AdminApiConfigController {
 
     @GetMapping
     public ResponseEntity<List<ApiConfigEntity>> getAll() {
+
         List<ApiConfigEntity> all = configService.getAll();
 
         // Mask sensitive values before sending to frontend
@@ -57,13 +61,18 @@ public class AdminApiConfigController {
         return ResponseEntity.ok(all);
     }
 
-    // ── GET SINGLE (unmasked for edit) ────────────────────────────────────────
+    // ── GET SINGLE (unmasked for edit) ───────────────────────────────────────
 
     @GetMapping("/{key}")
-    public ResponseEntity<ApiConfigEntity> getByKey(@PathVariable String key) {
-        ApiConfigEntity entity = configService.getEntityByKey(key);
-        // Return actual value for editing — admin only, secured by @PreAuthorize
-        return ResponseEntity.ok(entity);
+    public ResponseEntity<?> getByKey(@PathVariable String key) {
+
+        try {
+            ApiConfigEntity entity = configService.getEntityByKey(key);
+            return ResponseEntity.ok(entity);
+
+        } catch (ResourceNotFoundException e) {
+            return ResponseEntity.notFound().build();
+        }
     }
 
     // ── UPDATE SINGLE ─────────────────────────────────────────────────────────
@@ -72,7 +81,8 @@ public class AdminApiConfigController {
     public ResponseEntity<Map<String, Object>> updateByKey(
             @PathVariable String key,
             @RequestBody Map<String, String> body,
-            Principal principal) {
+            Principal principal
+    ) {
 
         String value = body.get("value");
         if (value == null) {
@@ -80,14 +90,26 @@ public class AdminApiConfigController {
                     .body(Map.of("error", "Missing 'value' in request body"));
         }
 
-        String updatedBy = principal != null ? principal.getName() : "admin";
-        ApiConfigEntity saved = configService.update(key, value, updatedBy);
+        try {
+            String updatedBy = principal != null ? principal.getName() : "admin";
+            ApiConfigEntity saved = configService.update(key, value, updatedBy);
 
-        return ResponseEntity.ok(Map.of(
-                "success", true,
-                "key",     saved.getConfigKey(),
-                "updatedAt", saved.getUpdatedAt() != null ? saved.getUpdatedAt().toString() : ""
-        ));
+            return ResponseEntity.ok(Map.of(
+                    "success",   true,
+                    "key",       saved.getConfigKey(),
+                    "updatedAt", saved.getUpdatedAt() != null
+                            ? saved.getUpdatedAt().toString()
+                            : ""
+            ));
+
+        } catch (ResourceNotFoundException e) {
+            return ResponseEntity.notFound().build();
+
+        } catch (IllegalStateException e) {
+            // Key exists but is not editable
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", e.getMessage()));
+        }
     }
 
     // ── BULK UPDATE ───────────────────────────────────────────────────────────
@@ -95,24 +117,38 @@ public class AdminApiConfigController {
     /**
      * Bulk update endpoint — used by admin page "Save All" button.
      * Body: { "GOLD_API_KEY": "newkey123", "GOLD_CACHE_TTL_MINUTES": "20", ... }
+     *
+     * Any non-editable or unknown key in the map will cause the entire
+     * request to fail with a 400. Transactional rollback applies.
      */
     @PostMapping("/bulk")
     public ResponseEntity<Map<String, Object>> bulkUpdate(
             @RequestBody Map<String, String> updates,
-            Principal principal) {
+            Principal principal
+    ) {
 
         if (updates == null || updates.isEmpty()) {
             return ResponseEntity.badRequest()
                     .body(Map.of("error", "Empty update map"));
         }
 
-        String updatedBy = principal != null ? principal.getName() : "admin";
-        configService.updateBulk(updates, updatedBy);
+        try {
+            String updatedBy = principal != null ? principal.getName() : "admin";
+            configService.updateBulk(updates, updatedBy);
 
-        return ResponseEntity.ok(Map.of(
-                "success", true,
-                "updatedCount", updates.size()
-        ));
+            return ResponseEntity.ok(Map.of(
+                    "success",      true,
+                    "updatedCount", updates.size()
+            ));
+
+        } catch (ResourceNotFoundException e) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", "Unknown config key: " + e.getMessage()));
+
+        } catch (IllegalStateException e) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", e.getMessage()));
+        }
     }
 
     // ── CACHE EVICT ───────────────────────────────────────────────────────────
@@ -123,8 +159,10 @@ public class AdminApiConfigController {
      */
     @PostMapping("/cache/evict")
     public ResponseEntity<Map<String, Object>> evictCache() {
+
         goldPriceService.evictCache();
         silverPriceService.evictCache();
+
         return ResponseEntity.ok(Map.of(
                 "success", true,
                 "message", "Gold and Silver price caches evicted. Next fetch will hit API live."
@@ -139,8 +177,8 @@ public class AdminApiConfigController {
      */
     private String maskKey(String key) {
         if (key.length() <= 8) return "********";
-        return key.substring(0, 4) +
-                "*".repeat(Math.max(0, key.length() - 8)) +
-                key.substring(key.length() - 4);
+        return key.substring(0, 4)
+                + "*".repeat(Math.max(0, key.length() - 8))
+                + key.substring(key.length() - 4);
     }
 }

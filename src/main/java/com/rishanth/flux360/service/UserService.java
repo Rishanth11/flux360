@@ -1,7 +1,7 @@
 package com.rishanth.flux360.service;
 
 import com.rishanth.flux360.dto.RegisterDTO;
-import com.rishanth.flux360.model.User;
+import com.rishanth.flux360.entity.User;
 
 public interface UserService {
     User register(RegisterDTO dto);

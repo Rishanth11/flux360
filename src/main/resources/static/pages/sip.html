@@ -286,6 +286,7 @@
 <script src="../js/guard.js"></script>
 <script src="../js/api.js"></script>
 <script>
+    requireUser();
     let sipChartInstance = null;
     let currentSipId     = null;
 
@@ -308,33 +309,134 @@
     }
 
     // ── ADD SIP ──
-    function addSip() {
-        const fundName      = document.getElementById('fundName').value.trim();
-        const fundCode      = document.getElementById('fundCode').value.trim();
-        const monthlyAmount = parseFloat(document.getElementById('monthlyAmount').value);
-        const startDate     = document.getElementById('startDate').value;
-        const sipDay        = parseInt(document.getElementById('sipDay').value);
-        const goalName      = document.getElementById('goalName').value.trim();
-        const targetAmount  = parseFloat(document.getElementById('targetAmount').value);
-        const inflationRate = parseFloat(document.getElementById('inflationRate').value) || 6;
+    async function addSip() {
 
-        if (!fundName || !monthlyAmount || monthlyAmount <= 0 || !startDate || sipDay < 1 || sipDay > 28)
-            return setError('Please fill all required fields with valid values.');
-        setError(null);
+    const fundName =
+        document.getElementById('fundName')
+            .value.trim();
 
-        const payload = {
-            fundName, fundCode, monthlyAmount, startDate, sipDay, goalName,
-            targetAmount: isNaN(targetAmount) ? null : targetAmount, inflationRate
-        };
+    const fundCode =
+        document.getElementById('fundCode')
+            .value.trim();
 
-        apiRequest('/sip', { method: 'POST', body: JSON.stringify(payload) }).then(res => {
-            if (res.ok) {
-                ['fundName','fundCode','monthlyAmount','startDate','sipDay','goalName','targetAmount'].forEach(id => document.getElementById(id).value = '');
-                document.getElementById('inflationRate').value = '6';
-                loadSips();
-            } else setError('Failed to add SIP. Please try again.');
-        });
+    const monthlyAmount =
+        parseFloat(
+            document.getElementById('monthlyAmount')
+                .value
+        );
+
+    const startDateInput =
+        document.getElementById('startDate')
+            .value;
+
+    const sipDay =
+        parseInt(
+            document.getElementById('sipDay')
+                .value
+        );
+
+    const goalName =
+        document.getElementById('goalName')
+            .value.trim();
+
+    const targetAmount =
+        parseFloat(
+            document.getElementById('targetAmount')
+                .value
+        );
+
+    const inflationRate =
+        parseFloat(
+            document.getElementById('inflationRate')
+                .value
+        ) || 6;
+
+    if (
+        !fundName ||
+        !monthlyAmount ||
+        monthlyAmount <= 0 ||
+        !startDateInput ||
+        sipDay < 1 ||
+        sipDay > 28
+    ) {
+
+        return setError(
+            'Please fill all required fields with valid values.'
+        );
     }
+
+    setError(null);
+
+    // FIX DATE FORMAT
+    const formattedDate =
+        new Date(startDateInput)
+            .toISOString()
+            .split('T')[0];
+
+    const payload = {
+
+        fundName,
+        fundCode,
+        monthlyAmount,
+
+        startDate: formattedDate,
+
+        sipDay,
+        goalName,
+
+        targetAmount:
+            isNaN(targetAmount)
+                ? null
+                : targetAmount,
+
+        inflationRate
+    };
+
+    const res = await apiRequest(
+        '/sip',
+        {
+            method: 'POST',
+
+            headers: {
+                'Content-Type': 'application/json'
+            },
+
+            body: JSON.stringify(payload)
+        }
+    );
+
+    if (res.ok) {
+
+        [
+            'fundName',
+            'fundCode',
+            'monthlyAmount',
+            'startDate',
+            'sipDay',
+            'goalName',
+            'targetAmount'
+        ].forEach(id =>
+            document.getElementById(id).value = ''
+        );
+
+        document.getElementById(
+            'inflationRate'
+        ).value = '6';
+
+        loadSips();
+
+    } else {
+
+        const errorText =
+            await res.text();
+
+        console.error(errorText);
+
+        setError(
+            'Failed to add SIP. Please try again.'
+        );
+    }
+}
 
     // ── LOAD SIPs ──
     function loadSips() {
@@ -409,93 +511,238 @@
 
     // Fix 4: fetch portfolio for all active SIPs and sum totals
     async function loadPortfolioTotals(sips) {
-        const activeSips = sips.filter(s => s.active && s.fundCode);
-        if (!activeSips.length) {
-            document.getElementById('statInvested').textContent = '₹0';
-            document.getElementById('statValue').textContent    = '₹0';
-            document.getElementById('statXirr').textContent     = '—';
-            return;
-        }
 
-        let totalInvested = 0, totalValue = 0;
-        let xirrSum = 0, xirrCount = 0;
-
-        // Fetch all in parallel for speed
-        const results = await Promise.allSettled(
-            activeSips.map(sip =>
-                apiRequest(`/sip/${sip.id}/portfolio`).then(r => r.ok ? r.json() : null)
-            )
+    const activeSips =
+        sips.filter(
+            s => s.active
         );
 
-        results.forEach(result => {
-            if (result.status !== 'fulfilled' || !result.value) return;
-            const d = result.value;
-            totalInvested += parseFloat(d.totalInvested || 0);
-            if (d.navAvailable !== false) {
-                totalValue += parseFloat(d.currentValue || 0);
-                const xirr = parseFloat(d.xirr || 0);
-                if (!isNaN(xirr) && xirr !== 0) { xirrSum += xirr; xirrCount++; }
-            }
-        });
+    if (!activeSips.length) {
 
-        document.getElementById('statInvested').textContent = fmt(totalInvested);
-        document.getElementById('statValue').textContent    = fmt(totalValue);
-        document.getElementById('statXirr').textContent     = xirrCount > 0
-            ? (xirrSum / xirrCount).toFixed(2) + '%'
-            : '—';
+        document.getElementById(
+            'statInvested'
+        ).textContent = '₹0';
 
-        // Colour XIRR
-        const xirrEl = document.getElementById('statXirr');
-        if (xirrCount > 0) {
-            const avgXirr = xirrSum / xirrCount;
-            xirrEl.className = avgXirr >= 0 ? 'profit' : 'loss';
-        }
+        document.getElementById(
+            'statValue'
+        ).textContent = '₹0';
+
+        document.getElementById(
+            'statXirr'
+        ).textContent = '—';
+
+        return;
     }
+
+    try {
+
+        const res =
+            await apiRequest(
+                '/sip/portfolio'
+            );
+
+        if (!res.ok) {
+            throw new Error();
+        }
+
+        const d =
+            await res.json();
+
+        document.getElementById(
+            'statInvested'
+        ).textContent =
+            fmt(d.totalInvested);
+
+        document.getElementById(
+            'statValue'
+        ).textContent =
+            fmt(d.currentValue);
+
+        document.getElementById(
+            'statXirr'
+        ).textContent =
+            d.xirr
+                ? parseFloat(d.xirr)
+                    .toFixed(2) + '%'
+                : '—';
+
+        const xirrEl =
+            document.getElementById(
+                'statXirr'
+            );
+
+        if (d.xirr !== null &&
+            d.xirr !== undefined) {
+
+            xirrEl.className =
+                parseFloat(d.xirr) >= 0
+                    ? 'profit'
+                    : 'loss';
+        }
+
+    } catch (e) {
+
+        console.error(
+            'Portfolio summary error:',
+            e
+        );
+
+        document.getElementById(
+            'statInvested'
+        ).textContent = '₹0';
+
+        document.getElementById(
+            'statValue'
+        ).textContent = '₹0';
+
+        document.getElementById(
+            'statXirr'
+        ).textContent = '—';
+    }
+}
 
     // ── VIEW PORTFOLIO ──
     function viewPortfolio(id, name) {
-        currentSipId = id;
-        document.getElementById('portfolioTitle').textContent = name;
-        const card = document.getElementById('portfolioCard');
-        card.style.display = 'block';
-        setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
 
-        apiRequest(`/sip/${id}/portfolio`).then(r => r.json()).then(d => {
-            document.getElementById('pInvested').textContent   = fmt(d.totalInvested);
-            document.getElementById('pXirr').textContent       = parseFloat(d.xirr || 0).toFixed(2) + '%';
-            document.getElementById('pRealReturn').textContent = parseFloat(d.realReturn || 0).toFixed(2) + '%';
+    currentSipId = id;
+
+    document.getElementById(
+        'portfolioTitle'
+    ).textContent = name;
+
+    const card =
+        document.getElementById(
+            'portfolioCard'
+        );
+
+    card.style.display = 'block';
+
+    setTimeout(() =>
+        card.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start'
+        }), 50
+    );
+
+    apiRequest(`/sip/${id}/portfolio`)
+        .then(r => r.json())
+        .then(d => {
+
+            document.getElementById(
+                'pInvested'
+            ).textContent =
+                fmt(d.totalInvested);
+
+            document.getElementById(
+                'pXirr'
+            ).textContent =
+                parseFloat(d.xirr || 0)
+                    .toFixed(2) + '%';
+
+            document.getElementById(
+                'pRealReturn'
+            ).textContent =
+                parseFloat(d.realReturn || 0)
+                    .toFixed(2) + '%';
 
             if (d.navAvailable === false) {
-                document.getElementById('pValue').textContent   = 'NAV unavailable';
-                document.getElementById('pReturns').textContent = '—';
-                document.getElementById('pXirr').textContent    = '—';
+
+                document.getElementById(
+                    'pValue'
+                ).textContent =
+                    'NAV unavailable';
+
+                document.getElementById(
+                    'pReturns'
+                ).textContent = '—';
+
+                document.getElementById(
+                    'pXirr'
+                ).textContent = '—';
+
             } else {
-                document.getElementById('pValue').textContent = fmt(d.currentValue);
-                const ret   = parseFloat(d.returns || 0);
-                const retEl = document.getElementById('pReturns');
-                retEl.textContent = fmt(ret);
-                retEl.className   = ret >= 0 ? 'profit' : 'loss';
+
+                document.getElementById(
+                    'pValue'
+                ).textContent =
+                    fmt(d.currentValue);
+
+                const ret =
+                    parseFloat(
+                        d.returns || 0
+                    );
+
+                const retEl =
+                    document.getElementById(
+                        'pReturns'
+                    );
+
+                retEl.textContent =
+                    fmt(ret);
+
+                retEl.className =
+                    ret >= 0
+                        ? 'profit'
+                        : 'loss';
             }
 
-            document.getElementById('pGoalName').textContent = d.goalName || '—';
-            document.getElementById('pTarget').textContent   = fmt(d.targetAmount);
-            const pct = Math.min(d.goalProgress || 0, 100);
-            document.getElementById('pProgressBar').style.width  = pct + '%';
-            document.getElementById('pProgressPct').textContent  = pct.toFixed(1) + '%';
+            document.getElementById(
+                'pGoalName'
+            ).textContent =
+                d.goalName || '—';
 
-        }).catch(err => console.error('Portfolio error:', err));
+            document.getElementById(
+                'pTarget'
+            ).textContent =
+                fmt(d.targetAmount);
 
-        apiRequest(`/sip/${id}/chart`).then(r => r.json()).then(chartData => {
-            renderSipChart(chartData);
-        }).catch(err => console.error('Chart error:', err));
-    }
+            const pct =
+                Math.min(
+                    d.goalProgress || 0,
+                    100
+                );
+
+            document.getElementById(
+                'pProgressBar'
+            ).style.width =
+                pct + '%';
+
+            document.getElementById(
+                'pProgressPct'
+            ).textContent =
+                pct.toFixed(1) + '%';
+
+        })
+        .catch(err =>
+            console.error(
+                'Portfolio error:',
+                err
+            )
+        );
+
+    apiRequest(`/sip/${id}/chart`)
+        .then(r => r.json())
+        .then(chartData => {
+
+            renderSipChart(
+                chartData
+            );
+
+        })
+        .catch(err =>
+            console.error(
+                'Chart error:',
+                err
+            )
+        );
+}
 
     // ── CHART ──
     function renderSipChart(chartData) {
         if (sipChartInstance) sipChartInstance.destroy();
         const ctx      = document.getElementById('sipChart').getContext('2d');
         const labels   = chartData.map(x => x.date);
-        const values   = chartData.map(x => x.value);
+        const values   = chartData.map(x => x.invested);
         const gradient = ctx.createLinearGradient(0, 0, 0, 260);
         gradient.addColorStop(0, 'rgba(22,163,74,0.18)');
         gradient.addColorStop(1, 'rgba(22,163,74,0)');

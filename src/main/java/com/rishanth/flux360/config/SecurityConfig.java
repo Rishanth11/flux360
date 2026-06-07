@@ -1,6 +1,6 @@
 package com.rishanth.flux360.config;
 
-import com.rishanth.flux360.model.UserStatus;
+import com.rishanth.flux360.entity.UserStatus;
 import com.rishanth.flux360.repository.UserRepository;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -47,9 +47,7 @@ public class SecurityConfig {
                         .disabled(u.getStatus() == UserStatus.BLOCKED)
                         .build()
                 )
-                .orElseThrow(() ->
-                        new UsernameNotFoundException("User not found: " + username)
-                );
+                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
     }
 
     @Bean
@@ -79,14 +77,15 @@ public class SecurityConfig {
                                 "/css/**",
                                 "/images/**",
                                 "/api/auth/**",
+                                "/api/stocks/proxy/**",
                                 "/favicon.ico",
                                 "/error"
                         ).permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .anyRequest().authenticated()
-                );
+                )
+                .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
 
-        http.addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 }

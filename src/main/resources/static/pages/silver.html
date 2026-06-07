@@ -436,6 +436,7 @@
 <script src="../js/guard.js"></script>
 <script src="../js/api.js"></script>
 <script>
+    requireUser();
     let chart;
     let allPurchases     = [];
     let currentLivePrice = 0;
@@ -697,24 +698,74 @@
     }
 
     async function addSilver() {
-        const grams = parseFloat(document.getElementById('grams').value);
-        const price = parseFloat(document.getElementById('price').value);
-        const date  = document.getElementById('purchaseDate').value;
 
-        if (!grams || !price || !date) return setError('Please fill all required fields.');
-        if (grams <= 0 || price <= 0)  return setError('Grams and price must be greater than 0.');
-        setError(null);
+    const grams =
+        parseFloat(
+            document.getElementById('grams').value
+        );
 
-        const params = new URLSearchParams({ grams, pricePerGram: price, purchaseDate: date });
-        const res = await apiRequest(`/silver/invest?${params}`, { method: 'POST' });
+    const price =
+        parseFloat(
+            document.getElementById('price').value
+        );
 
-        if (res.ok) {
-            ['grams', 'price', 'purchaseDate'].forEach(id => document.getElementById(id).value = '');
-            await loadSilver();
-        } else {
-            setError('Failed to add silver purchase.');
-        }
+    const date =
+        document.getElementById('purchaseDate').value;
+
+    if (!grams || !price || !date) {
+
+        return setError(
+            'Please fill all required fields.'
+        );
     }
+
+    if (grams <= 0 || price <= 0) {
+
+        return setError(
+            'Grams and price must be greater than 0.'
+        );
+    }
+
+    setError(null);
+
+    const res = await apiRequest(
+        '/silver/invest',
+        {
+            method: 'POST',
+
+            headers: {
+                'Content-Type': 'application/json'
+            },
+
+            body: JSON.stringify({
+                grams: grams,
+                pricePerGram: price,
+                purchaseDate: date
+            })
+        }
+    );
+
+    if (res.ok) {
+
+        ['grams', 'price', 'purchaseDate']
+            .forEach(id =>
+                document.getElementById(id).value = ''
+            );
+
+        await loadSilver();
+
+    } else {
+
+        const errorText =
+            await res.text();
+
+        console.error(errorText);
+
+        setError(
+            'Failed to add silver purchase.'
+        );
+    }
+}
 
     async function deleteSilver(id) {
         if (!confirm('Delete this purchase?')) return;

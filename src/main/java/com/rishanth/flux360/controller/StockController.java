@@ -5,6 +5,7 @@ import com.rishanth.flux360.dto.StockWatchlistDTO;
 import com.rishanth.flux360.service.StockService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;
@@ -12,6 +13,7 @@ import java.security.Principal;
 @RestController
 @RequestMapping("/api/stocks")
 @RequiredArgsConstructor
+@PreAuthorize("hasRole('USER')")
 public class StockController {
 
     private final StockService stockService;

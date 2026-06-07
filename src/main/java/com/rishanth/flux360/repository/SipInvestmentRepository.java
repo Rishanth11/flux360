@@ -1,15 +1,23 @@
 package com.rishanth.flux360.repository;
 
-import com.rishanth.flux360.model.SipInvestment;
-import com.rishanth.flux360.model.User;
+import com.rishanth.flux360.entity.SipInvestment;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
+import java.util.Optional;
 
-public interface SipInvestmentRepository extends JpaRepository<SipInvestment, Long> {
+public interface SipInvestmentRepository
+        extends JpaRepository<SipInvestment, Long> {
 
-    List<SipInvestment> findByUser(User user);
+    List<SipInvestment>
+    findByUserId(Long userId);
 
-    // Fix 2: efficient query — only active SIPs, no in-memory filtering
-    List<SipInvestment> findByActiveTrue();
+    Optional<SipInvestment>
+    findByIdAndUserId(
+            Long id,
+            Long userId
+    );
+
+    List<SipInvestment>
+    findByActiveTrue();
 }

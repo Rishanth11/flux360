@@ -437,6 +437,7 @@
 <script src="../js/guard.js"></script>
 <script src="../js/api.js"></script>
 <script>
+    requireUser();
     let holdings   = [];
     let watchlist  = [];
     let livePrices = {};
@@ -502,7 +503,14 @@
             symbolList.forEach(s => {
                 const ticker = s.symbol + (s.exchange === 'NSE' ? '.NS' : '.BO');
                 const key    = s.symbol + '_' + s.exchange;
-                if (data[ticker] && !data[ticker].error) result[key] = data[ticker];
+                if (data[ticker] && !data[ticker].error) {
+
+    result[key] = {
+        price: parseFloat(data[ticker].price || 0),
+        change: parseFloat(data[ticker].change || 0),
+        changePct: parseFloat(data[ticker].percent_change || 0)
+    };
+}
             });
             return result;
         } catch { return {}; }
