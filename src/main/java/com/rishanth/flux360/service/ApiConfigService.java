@@ -1,13 +1,12 @@
 package com.rishanth.flux360.service;
 
-import com.rishanth.flux360.exception.ResourceNotFoundException;
 import com.rishanth.flux360.entity.ApiConfigEntity;
+import com.rishanth.flux360.exception.ResourceNotFoundException;
 import com.rishanth.flux360.repository.ApiConfigRepository;
 import jakarta.annotation.PostConstruct;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
@@ -23,19 +22,15 @@ import java.util.Optional;
 public class ApiConfigService {
 
     private final ApiConfigRepository repo;
+    private final AuditLogService auditLogService;
 
-    // ─────────────────────────────────────────────
-    // ENVIRONMENT FALLBACKS
-    // ─────────────────────────────────────────────
-
-    @Value("${goldapi.key:}")
-    private String envGoldApiKey;
-
-    /**
-     * Map-based env fallback — avoids manual switch maintenance.
-     * Populated after @Value injection via @PostConstruct.
-     */
-    private Map<String, String> envFallbackMap;
+    private static final List<String> ALLOWED_SETTINGS = List.of(
+            "GOLD_CACHE_TTL_MINUTES",
+            "SILVER_CACHE_TTL_MINUTES",
+            "GOLD_INDIA_CORRECTION",
+            "SILVER_INDIA_CORRECTION",
+            "USD_TO_INR_APPROX"
+    );
 
     // ─────────────────────────────────────────────
     // INITIAL DEFAULT SEEDING
@@ -43,11 +38,6 @@ public class ApiConfigService {
 
     @PostConstruct
     public void seedDefaults() {
-
-        // Build env fallback map after @Value fields are injected
-        envFallbackMap = Map.of(
-                "GOLD_API_KEY",       envGoldApiKey
-        );
 
         seed(
                 "GOLD_CACHE_TTL_MINUTES",
@@ -93,7 +83,6 @@ public class ApiConfigService {
                 false,
                 true
         );
-
     }
 
     // ─────────────────────────────────────────────
@@ -130,10 +119,6 @@ public class ApiConfigService {
     // GET CONFIG
     // ─────────────────────────────────────────────
 
-    /**
-     * DB → ENV → EMPTY STRING
-     * Result cached by key to avoid repeated DB hits.
-     */
     @Cacheable(value = "apiConfig", key = "#key")
     public String get(String key) {
 
@@ -149,17 +134,16 @@ public class ApiConfigService {
             }
         }
 
-        return envFallback(key);
+        return "";
     }
 
-    /**
-     * DB → ENV → DEFAULT
-     */
     public String get(String key, String defaultValue) {
 
         String value = get(key);
 
-        return value.isBlank() ? defaultValue : value;
+        return value.isBlank()
+                ? defaultValue
+                : value;
     }
 
     // ─────────────────────────────────────────────
@@ -206,34 +190,25 @@ public class ApiConfigService {
     }
 
     // ─────────────────────────────────────────────
-    // ENV FALLBACKS
-    // ─────────────────────────────────────────────
-
-    private String envFallback(String key) {
-        return envFallbackMap.getOrDefault(key, "");
-    }
-
-    // ─────────────────────────────────────────────
     // ADMIN CRUD
     // ─────────────────────────────────────────────
 
     public List<ApiConfigEntity> getAll() {
-        return repo.findAll();
+
+        return repo.findAll()
+                .stream()
+                .filter(config ->
+                        ALLOWED_SETTINGS.contains(config.getConfigKey()))
+                .toList();
     }
 
     public List<ApiConfigEntity> getByCategory(String category) {
+
         return repo.findByCategoryOrderByConfigKeyAsc(
                 category.toUpperCase()
         );
     }
 
-    /**
-     * Update a config value.
-     *
-     * FIX 1: orElseThrow — unknown keys are rejected (no ghost CUSTOM entries).
-     * FIX 2: editable check — non-editable keys cannot be changed at runtime.
-     * FIX 3: Cache evicted so next get() reads fresh value from DB.
-     */
     @Transactional
     @CacheEvict(value = "apiConfig", key = "#key")
     public ApiConfigEntity update(
@@ -247,18 +222,41 @@ public class ApiConfigService {
                         "Config key not found: " + key
                 ));
 
+        if (!ALLOWED_SETTINGS.contains(key)) {
+            throw new IllegalStateException(
+                    "Setting cannot be modified from admin panel: " + key
+            );
+        }
+
         if (!entity.isEditable()) {
             throw new IllegalStateException(
                     "Config key is not editable: " + key
             );
         }
 
-        entity.setConfigValue(value == null ? "" : value.trim());
+        String oldValue = entity.getConfigValue();
+
+        entity.setConfigValue(
+                value == null ? "" : value.trim()
+        );
+
         entity.setUpdatedBy(updatedBy);
 
         ApiConfigEntity saved = repo.save(entity);
 
-        log.info("ApiConfig updated: {} by {}", key, updatedBy);
+        auditLogService.log(
+                "SYSTEM_SETTING_UPDATED",
+                updatedBy,
+                "Setting: " + key +
+                        " | Old: " + oldValue +
+                        " | New: " + saved.getConfigValue()
+        );
+
+        log.info(
+                "System setting updated: {} by {}",
+                key,
+                updatedBy
+        );
 
         return saved;
     }
@@ -269,9 +267,15 @@ public class ApiConfigService {
             String updatedBy
     ) {
 
-        updates.forEach((key, value) -> update(key, value, updatedBy));
+        updates.forEach(
+                (key, value) ->
+                        update(key, value, updatedBy)
+        );
 
-        log.info("Bulk ApiConfig update completed by {}", updatedBy);
+        log.info(
+                "Bulk system settings update completed by {}",
+                updatedBy
+        );
     }
 
     public ApiConfigEntity getEntityByKey(String key) {

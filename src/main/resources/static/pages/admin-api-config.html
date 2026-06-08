@@ -112,7 +112,7 @@
             <img src="../images/FLUX360_logo.png" alt="FLUX360" class="brand-logo" onerror="this.style.display='none'">
             <div class="brand-text">
                 <h1>FLUX360</h1>
-                <p>Admin · API Configuration</p>
+                <p>Admin · System Settings</p>
             </div>
         </div>
         <div class="admin-pill">
@@ -124,10 +124,10 @@
     <div class="hero">
         <div class="hero-left">
             <h2>Admin Panel</h2>
-            <div class="hero-title">API Configuration</div>
+            <div class="hero-title">System Settings</div>
             <div class="hero-sub">
                 <i class="fas fa-circle" style="font-size:0.5rem;opacity:0.7;"></i>
-                Manage API keys, endpoints, cache settings and correction factors
+                Manage cache settings and financial calculation parameters
             </div>
         </div>
         <div class="hero-right">
@@ -198,9 +198,10 @@
     }
 
     const TAB_ICONS = {
-        ALL: 'fa-th', KEYS: 'fa-key', GOLD: 'fa-coins', SILVER: 'fa-medal',
-        SIP: 'fa-chart-line', STOCKS: 'fa-chart-bar', CACHE: 'fa-clock', CORRECTION: 'fa-sliders-h',
-    };
+    ALL: 'fa-th',
+    CACHE: 'fa-clock',
+    CORRECTION: 'fa-sliders-h'
+};
 
     function renderTabs() {
         const categories = ['ALL', ...new Set(allConfigs.map(c => c.category).filter(Boolean))];
@@ -226,55 +227,84 @@
     }
 
     function buildCard(c) {
-        const isDirty = dirtyValues.hasOwnProperty(c.configKey);
-        let displayVal, placeholder;
-        if (c.sensitive) {
-            displayVal  = isDirty ? dirtyValues[c.configKey] : '';
-            placeholder = c.configValue?.length > 0
-                ? 'Key is set — type new value to replace'
-                : 'No key set — enter API key';
-        } else {
-            displayVal  = isDirty ? dirtyValues[c.configKey] : (c.configValue || '');
-            placeholder = 'Enter value...';
-        }
-        const updatedInfo = c.updatedAt
-            ? `Last updated ${formatDate(c.updatedAt)}${c.updatedBy ? ' by ' + c.updatedBy : ''}`
-            : 'Not yet modified';
-        return `
-        <div class="config-card ${isDirty ? 'dirty' : ''}" id="card-${c.configKey}">
-            <div class="config-card-top">
-                <span class="config-key">${escHtml(c.configKey)}</span>
-                <span class="category-badge cat-${escHtml(c.category || 'CUSTOM')}">${escHtml(c.category || 'CUSTOM')}</span>
-            </div>
-            <div class="config-desc">${escHtml(c.description || 'No description provided.')}</div>
-            <div class="config-input-row">
-                <input type="${c.sensitive ? 'password' : 'text'}" class="config-input"
-                    id="input-${c.configKey}" value="${escHtml(displayVal)}"
-                    placeholder="${escHtml(placeholder)}"
-                    oninput="onInputChange('${c.configKey}', this.value)" autocomplete="off">
-                <button class="save-btn" id="savebtn-${c.configKey}"
-                    onclick="saveSingle('${c.configKey}')" ${isDirty ? '' : 'disabled'}>
-                    <i class="fas fa-check"></i> Save
-                </button>
-            </div>
-            ${c.sensitive ? `<div class="sensitive-hint"><i class="fas fa-lock"></i> Key is write-only — leave blank to keep existing value</div>` : ''}
-            <div class="config-footer"><i class="fas fa-clock"></i> ${escHtml(updatedInfo)}</div>
-        </div>`;
-    }
+
+    const isDirty = dirtyValues.hasOwnProperty(c.configKey);
+
+    const displayVal = isDirty
+        ? dirtyValues[c.configKey]
+        : (c.configValue || '');
+
+    const updatedInfo = c.updatedAt
+        ? `Last updated ${formatDate(c.updatedAt)}${c.updatedBy ? ' by ' + c.updatedBy : ''}`
+        : 'Not yet modified';
+
+    return `
+    <div class="config-card ${isDirty ? 'dirty' : ''}" id="card-${c.configKey}">
+        <div class="config-card-top">
+            <span class="config-key">${escHtml(c.configKey)}</span>
+            <span class="category-badge cat-${escHtml(c.category || 'CUSTOM')}">
+                ${escHtml(c.category || 'CUSTOM')}
+            </span>
+        </div>
+
+        <div class="config-desc">
+            ${escHtml(c.description || 'No description provided.')}
+        </div>
+
+        <div class="config-input-row">
+            <input
+                type="text"
+                class="config-input"
+                id="input-${c.configKey}"
+                value="${escHtml(displayVal)}"
+                placeholder="Enter value..."
+                oninput="onInputChange('${c.configKey}', this.value)"
+                autocomplete="off">
+
+            <button
+                class="save-btn"
+                id="savebtn-${c.configKey}"
+                onclick="saveSingle('${c.configKey}')"
+                ${isDirty ? '' : 'disabled'}>
+
+                <i class="fas fa-check"></i> Save
+            </button>
+        </div>
+
+        <div class="config-footer">
+            <i class="fas fa-clock"></i>
+            ${escHtml(updatedInfo)}
+        </div>
+    </div>`;
+}
 
     function onInputChange(key, value) {
-        const original = allConfigs.find(c => c.configKey === key);
-        if (!original) return;
-        const isDirty = original.sensitive
-            ? value.length > 0
-            : value !== (original.configValue || '');
-        if (isDirty) dirtyValues[key] = value; else delete dirtyValues[key];
-        const card    = document.getElementById('card-' + key);
-        const saveBtn = document.getElementById('savebtn-' + key);
-        if (card)    card.classList.toggle('dirty', isDirty);
-        if (saveBtn) saveBtn.disabled = !isDirty;
-        updateSaveAllBar();
+
+    const original = allConfigs.find(c => c.configKey === key);
+
+    if (!original) return;
+
+    const isDirty = value !== (original.configValue || '');
+
+    if (isDirty) {
+        dirtyValues[key] = value;
+    } else {
+        delete dirtyValues[key];
     }
+
+    const card = document.getElementById('card-' + key);
+    const saveBtn = document.getElementById('savebtn-' + key);
+
+    if (card) {
+        card.classList.toggle('dirty', isDirty);
+    }
+
+    if (saveBtn) {
+        saveBtn.disabled = !isDirty;
+    }
+
+    updateSaveAllBar();
+}
 
     async function saveSingle(key) {
         const value = dirtyValues[key];
@@ -287,12 +317,12 @@
                 method: 'PUT', headers: authHeaders(), body: JSON.stringify({ value })
             });
             if (!res.ok) throw new Error(await res.text());
-            const data = await res.json();
+            await res.json();
             const config = allConfigs.find(c => c.configKey === key);
-            if (config && !data.skipped) {
-                if (!config.sensitive) config.configValue = value;
-                config.updatedAt = new Date().toISOString();
-            }
+            if (config) {
+    config.configValue = value;
+    config.updatedAt = new Date().toISOString();
+}
             delete dirtyValues[key];
             const card = document.getElementById('card-' + key);
             if (card) {
@@ -300,7 +330,11 @@
                 if (updated) { const temp = document.createElement('div'); temp.innerHTML = buildCard(updated); card.replaceWith(temp.firstElementChild); }
             }
             updateSaveAllBar();
-            showToast(data.skipped ? key + ' — blank value, existing key unchanged' : key + ' saved successfully', data.skipped ? 'amber' : 'success', data.skipped ? 'fa-info-circle' : 'fa-check');
+            showToast(
+    key + ' saved successfully',
+    'success',
+    'fa-check'
+);
         } catch (e) {
             if (saveBtn) saveBtn.disabled = false;
             showToast('Failed to save ' + key, 'danger', 'fa-exclamation-circle');
@@ -308,33 +342,65 @@
     }
 
     async function saveAll() {
-        if (!Object.keys(dirtyValues).length) return;
-        const payload = {};
-        for (const [key, value] of Object.entries(dirtyValues)) {
-            const config = allConfigs.find(c => c.configKey === key);
-            if (config?.sensitive && !value) continue;
-            payload[key] = value;
-        }
-        if (!Object.keys(payload).length) {
-            dirtyValues = {}; renderGrid(); updateSaveAllBar();
-            showToast('No changes to save', 'amber', 'fa-info-circle'); return;
-        }
-        try {
-            const res = await fetch(`${BASE_URL}/bulk`, { method: 'POST', headers: authHeaders(), body: JSON.stringify(payload) });
-            if (!res.ok) throw new Error(await res.text());
-            const data = await res.json();
-            for (const [key, value] of Object.entries(payload)) {
-                const config = allConfigs.find(c => c.configKey === key);
-                if (config && !config.sensitive) config.configValue = value;
-                if (config) config.updatedAt = new Date().toISOString();
-            }
-            const updated = data.updatedCount ?? Object.keys(payload).length;
-            const skipped = data.skippedCount ?? 0;
-            dirtyValues = {};
-            renderGrid(); updateSaveAllBar();
-            showToast(skipped > 0 ? `${updated} saved, ${skipped} blank key(s) unchanged` : `${updated} config(s) saved successfully`, 'success', 'fa-check');
-        } catch (e) { showToast('Bulk save failed: ' + e.message, 'danger', 'fa-exclamation-circle'); }
+
+    if (!Object.keys(dirtyValues).length) return;
+
+    const payload = {};
+
+    for (const [key, value] of Object.entries(dirtyValues)) {
+        payload[key] = value;
     }
+
+    try {
+
+        const res = await fetch(`${BASE_URL}/bulk`, {
+            method: 'POST',
+            headers: authHeaders(),
+            body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+            throw new Error(await res.text());
+        }
+
+        const data = await res.json();
+
+        for (const [key, value] of Object.entries(payload)) {
+
+            const config = allConfigs.find(
+                c => c.configKey === key
+            );
+
+            if (config) {
+                config.configValue = value;
+                config.updatedAt = new Date().toISOString();
+            }
+        }
+
+        const updated =
+            data.updatedCount ??
+            Object.keys(payload).length;
+
+        dirtyValues = {};
+
+        renderGrid();
+        updateSaveAllBar();
+
+        showToast(
+            `${updated} setting(s) saved successfully`,
+            'success',
+            'fa-check'
+        );
+
+    } catch (e) {
+
+        showToast(
+            'Bulk save failed: ' + e.message,
+            'danger',
+            'fa-exclamation-circle'
+        );
+    }
+}
 
     function discardChanges() {
         dirtyValues = {}; renderGrid(); updateSaveAllBar();
@@ -379,33 +445,61 @@
         setTimeout(() => toast.remove(), 3500);
     }
 
-    // ─────────────────────────────────────────────────────
-    // DEMO DATA
-    // Removed: TWELVEDATA_API_KEY (stocks now use Yahoo Finance — free, no key)
-    // Added:   YAHOO_FINANCE_BASE_URL (optional, for reference)
-    // ─────────────────────────────────────────────────────
+   // System Settings Demo Data
+// Cache and financial calculation settings only
     function getDemoConfigs() {
-        return [
-            { configKey:'GOLD_API_KEY',            configValue:'gold****3456', description:'goldapi.io access token (used for both gold and silver)',         category:'KEYS',       sensitive:true,  editable:true, updatedAt:null, updatedBy:null },
-            { configKey:'GOLD_API_URL',             configValue:'https://www.goldapi.io/api/XAU/INR',     description:'Primary gold price endpoint (XAU/INR)',  category:'GOLD',       sensitive:false, editable:true, updatedAt:null, updatedBy:null },
-            { configKey:'GOLD_FALLBACK_URL',        configValue:'https://api.gold-api.com/price/XAU',     description:'Fallback gold price endpoint (no key)',   category:'GOLD',       sensitive:false, editable:true, updatedAt:null, updatedBy:null },
-            { configKey:'SILVER_API_URL',           configValue:'https://www.goldapi.io/api/XAG/INR',     description:'Primary silver price endpoint (XAG/INR)', category:'SILVER',     sensitive:false, editable:true, updatedAt:null, updatedBy:null },
-            { configKey:'SILVER_FALLBACK_URL',      configValue:'https://api.gold-api.com/price/XAG',     description:'Fallback silver price endpoint (no key)', category:'SILVER',     sensitive:false, editable:true, updatedAt:null, updatedBy:null },
-            { configKey:'MFAPI_BASE_URL',           configValue:'https://api.mfapi.in/mf',                description:'MFAPI base URL for SIP NAV fetch',        category:'SIP',        sensitive:false, editable:true, updatedAt:null, updatedBy:null },
-            { configKey:'MFAPI_SEARCH_URL',         configValue:'https://api.mfapi.in/mf/search',         description:'MFAPI search URL for fund lookup',        category:'SIP',        sensitive:false, editable:true, updatedAt:null, updatedBy:null },
-            { configKey:'YAHOO_FINANCE_BASE_URL',   configValue:'https://query2.finance.yahoo.com/v8/finance/chart', description:'Yahoo Finance chart API — free, no key required. Used by StockProxyService.', category:'STOCKS', sensitive:false, editable:false, updatedAt:null, updatedBy:null },
-            { configKey:'GOLD_CACHE_TTL_MINUTES',   configValue:'15',    description:'Gold price cache TTL in minutes',                                          category:'CACHE',      sensitive:false, editable:true, updatedAt:null, updatedBy:null },
-            { configKey:'SILVER_CACHE_TTL_MINUTES', configValue:'15',    description:'Silver price cache TTL in minutes',                                        category:'CACHE',      sensitive:false, editable:true, updatedAt:null, updatedBy:null },
-            { configKey:'GOLD_INDIA_CORRECTION',    configValue:'1.0433', description:'India correction factor for gold (GST + customs + MCX premium)',          category:'CORRECTION', sensitive:false, editable:true, updatedAt:null, updatedBy:null },
-            { configKey:'SILVER_INDIA_CORRECTION',  configValue:'1.0766', description:'India correction factor for silver (GST + customs + MCX premium)',        category:'CORRECTION', sensitive:false, editable:true, updatedAt:null, updatedBy:null },
-            { configKey:'USD_TO_INR_APPROX',        configValue:'84.50',  description:'Approximate USD to INR exchange rate used in fallback price calculation',  category:'CORRECTION', sensitive:false, editable:true, updatedAt:null, updatedBy:null },
-        ];
-    }
+    return [
+        {
+            configKey: 'GOLD_CACHE_TTL_MINUTES',
+            configValue: '15',
+            description: 'Gold price cache TTL in minutes',
+            category: 'CACHE',
+            editable: true,
+            updatedAt: null,
+            updatedBy: null
+        },
+        {
+            configKey: 'SILVER_CACHE_TTL_MINUTES',
+            configValue: '15',
+            description: 'Silver price cache TTL in minutes',
+            category: 'CACHE',
+            editable: true,
+            updatedAt: null,
+            updatedBy: null
+        },
+        {
+            configKey: 'GOLD_INDIA_CORRECTION',
+            configValue: '1.0433',
+            description: 'India correction factor for gold (GST + customs + MCX premium)',
+            category: 'CORRECTION',
+            editable: true,
+            updatedAt: null,
+            updatedBy: null
+        },
+        {
+            configKey: 'SILVER_INDIA_CORRECTION',
+            configValue: '1.0766',
+            description: 'India correction factor for silver (GST + customs + MCX premium)',
+            category: 'CORRECTION',
+            editable: true,
+            updatedAt: null,
+            updatedBy: null
+        },
+        {
+            configKey: 'USD_TO_INR_APPROX',
+            configValue: '84.50',
+            description: 'Approximate USD to INR exchange rate used in fallback price calculation',
+            category: 'CORRECTION',
+            editable: true,
+            updatedAt: null,
+            updatedBy: null
+        }
+    ];
+}
 
     document.addEventListener('DOMContentLoaded', () => {
-        if (typeof requireAuth === 'function') requireAuth();
-        loadConfigs();
-    });
+    loadConfigs();
+});
 </script>
 </body>
 </html>

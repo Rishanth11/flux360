@@ -39,6 +39,9 @@ public class GoldPriceService {
     @Value("${gold.fallback.url}")
     private String goldFallbackUrl;
 
+    @Value("${goldapi.key}")
+    private String goldApiKey;
+
     // ─────────────────────────────────────────────
     // CACHE
     // ─────────────────────────────────────────────
@@ -151,13 +154,12 @@ public class GoldPriceService {
 
             String url = goldApiUrl;
 
-            String apiKey =
-                    apiConfig.get("GOLD_API_KEY");
+            String apiKey = goldApiKey;
 
             if (apiKey.isBlank()) {
 
                 log.error(
-                        "GOLD_API_KEY is empty. Skipping primary gold fetch."
+                        "goldapi.key is empty. Skipping primary gold fetch."
                 );
 
                 return null;

@@ -14,16 +14,15 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * AdminApiConfigController — REST API for admin to manage API keys, URLs, settings.
+ * AdminSystemSettingsController
  *
- * ALL endpoints require ROLE_ADMIN.
+ * Admin endpoints for managing runtime system settings:
+ * - Cache TTL values
+ * - Gold/Silver correction factors
+ * - USD to INR fallback rate
  *
- * Endpoints:
- *   GET    /api/admin/config              → Get all config entries
- *   GET    /api/admin/config/{key}        → Get single config entry
- *   PUT    /api/admin/config/{key}        → Update single config value
- *   POST   /api/admin/config/bulk         → Bulk update multiple keys
- *   POST   /api/admin/config/cache/evict  → Force evict gold+silver cache
+ * API keys and URLs are managed through application properties
+ * and are not exposed through the admin UI.
  */
 @RestController
 @RequestMapping("/api/admin/config")

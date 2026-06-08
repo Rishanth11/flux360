@@ -9,6 +9,8 @@ import com.rishanth.flux360.repository.UserRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.persistence.PersistenceContext;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,12 +21,17 @@ import java.util.stream.Collectors;
 public class AdminUserServiceImpl implements AdminUserService {
 
     private final UserRepository userRepository;
+    private final AuditLogService auditLogService;
 
     @PersistenceContext
-    private EntityManager entityManager;   // ✅ added
+    private EntityManager entityManager;
 
-    public AdminUserServiceImpl(UserRepository userRepository) {
+    public AdminUserServiceImpl(
+            UserRepository userRepository,
+            AuditLogService auditLogService
+    ) {
         this.userRepository = userRepository;
+        this.auditLogService = auditLogService;
     }
 
     /* ── Get all users ──────────────────────────────────────────────── */
@@ -39,10 +46,11 @@ public class AdminUserServiceImpl implements AdminUserService {
     /* ── Stats ──────────────────────────────────────────────────────── */
     @Override
     public UserStatsDTO getUserStats() {
-        long total   = userRepository.count();
-        long active  = userRepository.countByStatus(UserStatus.ACTIVE);
+        long total = userRepository.count();
+        long active = userRepository.countByStatus(UserStatus.ACTIVE);
         long blocked = userRepository.countByStatus(UserStatus.BLOCKED);
-        long admins  = userRepository.countByRole(Role.ROLE_ADMIN);
+        long admins = userRepository.countByRole(Role.ROLE_ADMIN);
+
         return new UserStatsDTO(total, active, blocked, admins);
     }
 
@@ -50,40 +58,78 @@ public class AdminUserServiceImpl implements AdminUserService {
     @Override
     @Transactional
     public UserDTO blockUser(Long userId) {
+
         User user = findUserById(userId);
+
         user.setStatus(UserStatus.BLOCKED);
-        return new UserDTO(userRepository.save(user));
+
+        User savedUser = userRepository.save(user);
+
+        auditLogService.log(
+                "BLOCK_USER",
+                getCurrentAdmin(),
+                "Blocked user: " + user.getEmail()
+        );
+
+        return new UserDTO(savedUser);
     }
 
     /* ── Unblock user ───────────────────────────────────────────────── */
     @Override
     @Transactional
     public UserDTO unblockUser(Long userId) {
+
         User user = findUserById(userId);
+
         user.setStatus(UserStatus.ACTIVE);
-        return new UserDTO(userRepository.save(user));
+
+        User savedUser = userRepository.save(user);
+
+        auditLogService.log(
+                "UNBLOCK_USER",
+                getCurrentAdmin(),
+                "Unblocked user: " + user.getEmail()
+        );
+
+        return new UserDTO(savedUser);
     }
 
-    /* ── Delete user (FIXED 🔥) ─────────────────────────────────────── */
+    /* ── Delete user ────────────────────────────────────────────────── */
     @Override
     @Transactional
     public void deleteUser(Long userId) {
 
-        // ✅ check user exists
         User user = findUserById(userId);
 
-        // 💥 STEP 1: delete child records (incomes)
-        entityManager.createQuery("DELETE FROM Income i WHERE i.user.id = :userId")
+        auditLogService.log(
+                "DELETE_USER",
+                getCurrentAdmin(),
+                "Deleted user: " + user.getEmail()
+        );
+
+        entityManager.createQuery(
+                        "DELETE FROM Income i WHERE i.user.id = :userId")
                 .setParameter("userId", userId)
                 .executeUpdate();
 
-        // ✅ STEP 2: delete user
         userRepository.delete(user);
+    }
+
+    /* ── Current Admin ──────────────────────────────────────────────── */
+    private String getCurrentAdmin() {
+
+        Authentication authentication =
+                SecurityContextHolder.getContext().getAuthentication();
+
+        return authentication != null
+                ? authentication.getName()
+                : "SYSTEM";
     }
 
     /* ── Private helper ─────────────────────────────────────────────── */
     private User findUserById(Long userId) {
         return userRepository.findById(userId)
-                .orElseThrow(() -> new EntityNotFoundException("User not found: " + userId));
+                .orElseThrow(() ->
+                        new EntityNotFoundException("User not found: " + userId));
     }
 }

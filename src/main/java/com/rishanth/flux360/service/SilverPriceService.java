@@ -37,6 +37,9 @@ public class SilverPriceService {
     @Value("${silver.fallback.url}")
     private String silverFallbackUrl;
 
+    @Value("${goldapi.key}")
+    private String goldApiKey;
+
     // ── Manual in-memory cache ────────────────────────────────────────────────
     private volatile BigDecimal cachedPrice = null;
     private volatile Instant   cacheTime   = Instant.MIN;
@@ -89,10 +92,10 @@ public class SilverPriceService {
     private BigDecimal fetchFromGoldApiInr() {
         try {
             String url = silverApiUrl;
-            String apiKey = apiConfig.get("GOLD_API_KEY");   // same key covers XAG too
+            String apiKey = goldApiKey;
 
             if (apiKey.isBlank()) {
-                System.out.println("❌ GOLD_API_KEY (used for silver) is empty — skipping primary fetch");
+                System.out.println("❌ goldapi.key is empty — skipping silver primary fetch");
                 return null;
             }
 
