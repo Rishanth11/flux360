@@ -2,6 +2,7 @@ package com.rishanth.flux360.service;
 
 import org.springframework.beans.factory.annotation.Value;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -9,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.cache.annotation.Cacheable;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -16,17 +18,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 
-/**
- * GoldPriceService
- *
- * Reads all config dynamically from ApiConfigService.
- * Supports:
- * - primary API
- * - fallback API
- * - in-memory caching
- * - India market correction
- * - DB runtime config
- */
 @Slf4j
 @Service
 public class GoldPriceService {
@@ -41,14 +32,6 @@ public class GoldPriceService {
 
     @Value("${goldapi.key}")
     private String goldApiKey;
-
-    // ─────────────────────────────────────────────
-    // CACHE
-    // ─────────────────────────────────────────────
-
-    private volatile BigDecimal cachedPrice = null;
-    private volatile Instant cacheTime = Instant.MIN;
-
     // ─────────────────────────────────────────────
     // HTTP CLIENT
     // ─────────────────────────────────────────────
@@ -72,37 +55,12 @@ public class GoldPriceService {
     // PUBLIC API
     // ─────────────────────────────────────────────
 
+
+
+    @Cacheable("goldPrice")
     public BigDecimal getLiveGoldPricePerGram() {
 
-        int ttlMinutes =
-                apiConfig.getInt(
-                        "GOLD_CACHE_TTL_MINUTES",
-                        15
-                );
-
-        Duration cacheTtl = Duration.ofMinutes(ttlMinutes);
-
-        // ── Serve cache if valid ─────────────────
-
-        if (cachedPrice != null &&
-                Duration.between(
-                        cacheTime,
-                        Instant.now()
-                ).compareTo(cacheTtl) < 0) {
-
-            log.info(
-                    "Gold price served from cache: ₹{}/g",
-                    cachedPrice
-            );
-
-            return cachedPrice;
-        }
-
-        // ── Primary API ─────────────────────────
-
         BigDecimal result = fetchFromGoldApiInr();
-
-        // ── Fallback API ────────────────────────
 
         if (result == null) {
 
@@ -113,29 +71,9 @@ public class GoldPriceService {
             result = fetchFallbackPrice();
         }
 
-        // ── Success ─────────────────────────────
-
         if (result != null) {
-
-            cachedPrice = result;
-            cacheTime = Instant.now();
-
             return result;
         }
-
-        // ── Serve stale cache ───────────────────
-
-        if (cachedPrice != null) {
-
-            log.warn(
-                    "All APIs failed. Serving stale gold cache: ₹{}/g",
-                    cachedPrice
-            );
-
-            return cachedPrice;
-        }
-
-        // ── Final hardcoded fallback ────────────
 
         log.error(
                 "No cache and all APIs failed. Returning hardcoded fallback price."
@@ -321,10 +259,8 @@ public class GoldPriceService {
     // CACHE MANAGEMENT
     // ─────────────────────────────────────────────
 
+    @CacheEvict(value = "goldPrice", allEntries = true)
     public void evictCache() {
-
-        cachedPrice = null;
-        cacheTime = Instant.MIN;
 
         log.info("Gold cache evicted.");
     }

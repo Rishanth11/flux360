@@ -8,24 +8,14 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.CacheEvict;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.Duration;
-import java.time.Instant;
 import java.util.Map;
 
-/**
- * SilverPriceService — Updated to read ALL config from ApiConfigService (DB-backed).
- *
- * WHAT CHANGED FROM ORIGINAL:
- *   - goldApiKey        → apiConfig.get("GOLD_API_KEY")   (same key used for silver)
- *   - primary URL       → apiConfig.get("SILVER_API_URL")
- *   - fallback URL      → apiConfig.get("SILVER_FALLBACK_URL")
- *   - cache TTL         → apiConfig.getInt("SILVER_CACHE_TTL_MINUTES", 15)
- *   - India correction  → apiConfig.getBigDecimal("SILVER_INDIA_CORRECTION", 1.0766)
- *   - USD/INR approx    → apiConfig.getBigDecimal("USD_TO_INR_APPROX", 84.50)
- */
+
 @Service
 public class SilverPriceService {
 
@@ -40,10 +30,6 @@ public class SilverPriceService {
     @Value("${goldapi.key}")
     private String goldApiKey;
 
-    // ── Manual in-memory cache ────────────────────────────────────────────────
-    private volatile BigDecimal cachedPrice = null;
-    private volatile Instant   cacheTime   = Instant.MIN;
-
     // ── RestTemplate with generous timeouts ───────────────────────────────────
     private final RestTemplate restTemplate;
 
@@ -56,16 +42,8 @@ public class SilverPriceService {
         this.restTemplate = new RestTemplate(factory);
     }
 
+    @Cacheable("silverPrice")
     public BigDecimal getLiveSilverPricePerGram() {
-        // ── Cache TTL from DB (default 15 min) ───────────────────────────────
-        int ttlMinutes = apiConfig.getInt("SILVER_CACHE_TTL_MINUTES", 15);
-        Duration cacheTtl = Duration.ofMinutes(ttlMinutes);
-
-        if (cachedPrice != null &&
-                Duration.between(cacheTime, Instant.now()).compareTo(cacheTtl) < 0) {
-            System.out.println("✅ Silver price served from cache: ₹" + cachedPrice + "/g");
-            return cachedPrice;
-        }
 
         BigDecimal result = fetchFromGoldApiInr();
 
@@ -75,14 +53,7 @@ public class SilverPriceService {
         }
 
         if (result != null) {
-            cachedPrice = result;
-            cacheTime   = Instant.now();
             return result;
-        }
-
-        if (cachedPrice != null) {
-            System.out.println("⚠️ All APIs failed — serving stale silver cache: ₹" + cachedPrice + "/g");
-            return cachedPrice;
         }
 
         System.out.println("❌ No cache and all APIs failed — returning hardcoded approximate");
@@ -162,9 +133,8 @@ public class SilverPriceService {
         }
     }
 
+    @CacheEvict(value = "silverPrice", allEntries = true)
     public void evictCache() {
-        cachedPrice = null;
-        cacheTime   = Instant.MIN;
         System.out.println("🔄 Silver price cache evicted by admin");
     }
 }
