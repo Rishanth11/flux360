@@ -121,29 +121,17 @@ public class PiggyBankServiceImpl implements PiggyBankService {
     ) {
 
         BigDecimal totalIncome =
-                incomeService.getTotalIncome(
-                        user.getId()
-                );
+                incomeService.getTotalIncome(user.getId());
 
         BigDecimal totalExpense =
-                expenseService.getTotalExpense(
-                        user.getId()
-                );
+                expenseService.getTotalExpense(user.getId());
 
         BigDecimal totalDeposits =
-                repository.totalDeposits(
-                        user.getId()
-                );
-
-        BigDecimal totalWithdrawals =
-                repository.totalWithdrawals(
-                        user.getId()
-                );
+                repository.totalDeposits(user.getId());
 
         return totalIncome
                 .subtract(totalExpense)
-                .subtract(totalDeposits)
-                .add(totalWithdrawals);
+                .subtract(totalDeposits);
     }
 
     private BigDecimal getCurrentBalance(

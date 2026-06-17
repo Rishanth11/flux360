@@ -14,15 +14,3 @@ public class Flux360Application {
         SpringApplication.run(Flux360Application.class, args);
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
